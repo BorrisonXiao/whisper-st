@@ -779,17 +779,17 @@ if ! "${skip_data_prep}"; then
 
     if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         log "Stage 6: Run (distributed) ASR inference on the dev/test data."
-        # for dset in ${valid_set} ${test_sets}; do
+        for dset in ${valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
-        for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
             if [ "${dset}" = "${valid_set}" ]; then
                 _suf="/org"
             else
                 _suf=""
             fi
             _dsetdir=${data_feats}${_suf}/${dset}
-            _dir="${st_exp}/${dset}"
-            _logdir="${st_exp}/logdir/inference_asr/${dset}"
+            _dir="${st_exp}/${src_lang}/${dset}"
+            _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
             mkdir -p "${_logdir}"
 
             # 1. Split the key file
@@ -829,16 +829,17 @@ if ! "${skip_data_prep}"; then
         log "Stage 7: Run evaluation on the ASR decoded data."
 
         # Note that we assume the evaluation code is available in the path
-        # for dset in ${valid_set} ${test_sets}; do
+        for dset in ${valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
-        for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
             log "Running evaluation on ${dset}"
             eval_script=run-asr-eval.sh
 
-            _dir="${st_exp}/${dset}"
+            _dir="${st_exp}/${src_lang}/${dset}"
             _asr_hyp="${PWD}/${_dir}/text"
             cd evaluation
             ${eval_script} \
+                --src_lang ${src_lang} \
                 --asr_hyp_file "${_asr_hyp}" \
                 --sclite ${sclite_path} \
                 --model_tag ${model_name} \
@@ -861,8 +862,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             _suf=""
         fi
         _dsetdir=${data_feats}${_suf}/${dset}
-        _dir="${st_exp}/${dset}"
-        _logdir="${st_exp}/logdir/inference_st/${dset}"
+        _dir="${st_exp}/${src_lang}/${dset}"
+        _logdir="${st_exp}/logdir/inference_st/${src_lang}/${dset}"
         mkdir -p "${_logdir}"
 
         # 1. Split the key file

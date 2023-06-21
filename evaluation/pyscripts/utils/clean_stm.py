@@ -11,10 +11,19 @@ def clean(ref, outfile):
         # Remove the --- in each line (and the spaces after it)
         lines = f.readlines()
         lines = [line.strip() for line in lines]
-        lines = [line.replace("---", "") for line in lines]
-        lines = [line.replace("--", "") for line in lines]
-        lines = [line.replace("  ", " ") for line in lines]
-        print("\n".join(lines), file=f2)
+
+        for line in lines:
+            splitted = line.split(maxsplit=5)
+            headers = " ".join(splitted[:5])
+            text = splitted[-1]
+            text = text.strip()
+            text = text.replace(".", "")
+            text = text.replace("--", "")
+            text = text.replace("!", "")
+            text = text.replace("?", "")
+            text = text.replace("~", "")
+            text = text.replace("  ", " ")
+            print(headers, text, file=f2)
 
 
 def main():

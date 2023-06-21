@@ -75,9 +75,10 @@ def _parse_stm_line(l):
     except ValueError:
         path, channel, speaker, start, end, lbl = l.strip().split(None, 5)
         text = ''
-    recoid = path
+    recoid = path.replace("//", "/")
     text, _ = _reformat_mixed_mandarin_text(text)
     text = ' '.join(text)
+    text = re.sub(r"\-\-+", "\-", text)
     return {
         'recoid': recoid,
         'channel': channel,
@@ -149,8 +150,9 @@ def main(args):
             for ctm in sorted(recos[recoid], key=lambda x: (x[1], x[2])):
                 print(f'{ctm[0]} {ctm[1]} {ctm[2]:0.2f} {ctm[3]:0.2f} {ctm[4]} 1.0', file=fp) 
     
-    cmd = [args.sclite] + f"-r {odir / 'ref.stm'} stm -h {odir / 'hyp.ctm'} ctm -e utf-8 -D -c NOASCII DH -O {args.odir} -o all".split()
+    cmd = [args.sclite] + f"-r {odir / 'ref.stm'} stm -h {odir / 'hyp.ctm'} ctm -O {args.odir} -o all".split()
     status = check_call(cmd, shell=False, stderr=DEVNULL, stdout=DEVNULL)
+    # status = check_call(cmd, shell=False)
      
              
 if __name__ == "__main__":

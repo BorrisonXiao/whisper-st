@@ -116,10 +116,14 @@ pyscripts/utils/clean_stm.py \
 
 # Convert the hypothesis file to STM format
 pyscripts/utils/text2stm.py \
-    -i ${asr_hyp_file} \
-    -o "${test_score_dir}/data/hyp.stm" \
+    -i "${asr_hyp_file}" \
+    -o "${test_score_dir}/data/_hyp.stm" \
     -r "${test_score_dir}/data/ref.stm" \
     --dset ${dset}
+
+pyscripts/utils/clean_stm.py \
+    -i "${test_score_dir}/data/_hyp.stm" \
+    -o "${test_score_dir}/data/hyp.stm"
 
 # Run the eval script
 pyscripts/utils/stm_wer.py \
