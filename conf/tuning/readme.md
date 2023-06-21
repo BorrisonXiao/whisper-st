@@ -1,0 +1,1 @@
+init from brians ta model train_st_ctc_md_conformer_asrinit_v3_noamp_batch50m_3

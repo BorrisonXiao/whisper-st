@@ -1,0 +1,110 @@
+batch_type: numel
+batch_bins: 20000000
+#batch_bins: 20000000
+accum_grad: 2
+max_epoch: 15
+patience: none
+init: none
+best_model_criterion:
+    - - valid
+      - acc
+      - max
+keep_nbest_models: 10
+# use_amp: true       # automatic mixed precision (amp)
+num_workers: 2
+log_interval: 500
+
+encoder: branchformer
+encoder_conf:
+    output_size: 256
+    use_attn: true
+    attention_heads: 4
+    attention_layer_type: rel_selfattn
+    pos_enc_layer_type: rel_pos
+    rel_pos_type: latest
+    use_cgmlp: true
+    cgmlp_linear_units: 2048
+    cgmlp_conv_kernel: 31
+    dropout_rate: 0.1
+    use_linear_after_conv: false
+    gate_activation: identity
+    merge_method: concat
+    cgmlp_weight: 0.5 # used only if merge_method is "fixed_ave"
+    attn_branch_drop_rate: 0.0 # used only if merge_method is "learned_ave"
+    num_blocks: 12
+    positional_dropout_rate: 0.1
+    attention_dropout_rate: 0.1
+    input_layer: conv2d
+    stochastic_depth_rate: 0.0
+
+decoder: fairseq_transformers
+decoder_conf:
+    model_name_or_path: /home/cxiao7/research/iwslt2023/dialect/mbart
+
+extra_asr_decoder: transformer
+extra_asr_decoder_conf:
+    num_blocks: 6
+    linear_units: 2048
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    self_attention_dropout_rate: 0.2
+    src_attention_dropout_rate: 0.2
+
+md_encoder: fairseq_transformers
+md_encoder_conf:
+    model_name_or_path: /home/cxiao7/research/iwslt2023/dialect/mbart
+    length_adaptor_n_layers: 0
+    lang_token_id: 250001 # Not sure what this should be in our case
+
+model_conf:
+    asr_weight: 0.3
+    mt_weight: 0.0
+    mtlalpha: 0.3
+    st_mtlalpha: 0
+    lsm_weight: 0.1
+    # length_normalized_loss: false
+    # extract_feats_in_collect_stats: false
+    src_ignore_id: -1
+    ignore_id: 1
+    tgt_sym_blank: "<pad>"
+    tgt_sym_sos: "<s>"
+    tgt_sym_eos: "</s>"
+    lang_token_id: 250004 #250003 de_DE #250001 for AR
+
+optim: adam
+optim_conf:
+    lr: 0.0001
+    weight_decay: 0.000001
+scheduler: warmuplr
+scheduler_conf:
+    warmup_steps: 30000
+
+frontend_conf:
+    n_fft: 256
+    win_length: 256
+    hop_length: 80
+
+specaug: specaug
+specaug_conf:
+    apply_time_warp: true
+    time_warp_window: 5
+    time_warp_mode: bicubic
+    apply_freq_mask: true
+    freq_mask_width_range:
+        - 0
+        - 27
+    num_freq_mask: 2
+    apply_time_mask: true
+    time_mask_width_ratio_range:
+        - 0.
+        - 0.05
+    num_time_mask: 5
+
+ignore_init_mismatch: true
+init_param:
+    - "/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/exp_call_mixed/asr_finetune_asr_branchformer_raw_bpe2000_sp/valid.acc.ave_10best.pth:encoder:encoder"
+    - "/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/exp_call_mixed/asr_finetune_asr_branchformer_raw_bpe2000_sp/valid.acc.ave_10best.pth:ctc:ctc"
+    - "/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/exp_call_mixed/asr_finetune_asr_branchformer_raw_bpe2000_sp/valid.acc.ave_10best.pth:decoder:extra_asr_decoder"
+freeze_param:
+    - "decoder"
+    - "md_encoder"
