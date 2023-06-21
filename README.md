@@ -33,12 +33,12 @@ Please let me (Cihan) know if there is anything missing or there is any bug/erro
 # Results
 ### ASR Results (CER)
 | Model | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
-| ----------- | ----------- | ----------- | ----------- |
+| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
 | large-v2 | 79.1 | 77.2 | 8.9 | - | 37.7 | 5.2 |
 
 ### ASR Results (WER)
 | Model | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
-| ----------- | ----------- | ----------- | ----------- |
+| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
 | large-v2 | 110.9 | 113.4 | 25.3 | 57.3 | 56.7 | 19.5 |
 
 ### ST Results (BLEU)
