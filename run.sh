@@ -14,6 +14,7 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
+# src_lang=kor
 src_lang=ara
 tgt_lang=eng
 
@@ -54,6 +55,7 @@ fs_str=16000
 fs=16k
 min_duration=0.0
 start_at_zero=true
+datadir=data/${src_lang}
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
 local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -72,6 +74,8 @@ local_data_opts+=' --dev_set '
 local_data_opts+=$train_dev
 local_data_opts+=' --src_lang '
 local_data_opts+=$src_lang
+local_data_opts+=' --datadir '
+local_data_opts+=$datadir
 
 ./decode.sh \
     --use_streaming false \
@@ -99,9 +103,10 @@ local_data_opts+=$src_lang
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 9 \
-    --stop_stage 9 \
-    --datadir data \
+    --stage 7 \
+    --stop_stage 7 \
+    --datadir ${datadir} \
+    --dumpdir "dump/${src_lang}" \
     --save_wav true \
     --st_tag whisper_${model} \
     --model_name ${model} \

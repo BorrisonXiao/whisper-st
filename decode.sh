@@ -515,7 +515,7 @@ fi
 
 if ! "${skip_data_prep}"; then
     if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-        log "Stage 1: Data preparation for data/${train_set}, data/${valid_set}, etc."
+        log "Stage 1: Data preparation for ${datadir}/${train_set}, ${datadir}/${valid_set}, etc."
         # [Task dependent] Need to create data.sh for new corpus
         local/data.sh ${local_data_opts}
     fi
@@ -829,9 +829,9 @@ if ! "${skip_data_prep}"; then
         log "Stage 7: Run evaluation on the ASR decoded data."
 
         # Note that we assume the evaluation code is available in the path
-        for dset in ${valid_set} ${test_sets}; do
+        # for dset in ${valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
             log "Running evaluation on ${dset}"
             eval_script=run-asr-eval.sh
 
@@ -852,9 +852,9 @@ fi
 
 if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ST inference on the dev/test data."
-    # for dset in ${valid_set} ${test_sets}; do
-    for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+    for dset in ${valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
+    # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
         else

@@ -15,6 +15,7 @@ ignore_segments=false
 fs_str=16000
 min_duration=0.0
 start_at_zero=false
+datadir=data
 SECONDS=0
 
 . utils/parse_options.sh || exit 1;
@@ -47,9 +48,9 @@ set -o pipefail
 
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
-    log "Create ESPnet style directory in data directory"
+    log "Create ESPnet style directory in ${datadir} directory"
 
-    mkdir -p $(pwd)/data
+    mkdir -p $(pwd)/${datadir}
 
     opts="--fs ${fs_str} --min-duration $min_duration "
     if "${stereo}"; then
@@ -65,7 +66,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     for set in $train_set $dev_set; do
         log "Preparing $set"
 
-        output_dir=$(pwd)/data/${set}
+        output_dir=$(pwd)/${datadir}/${set}
 
         mkdir -p $output_dir
 
@@ -90,7 +91,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     for testset in $cts_testlist; do
         log "Prepraring $testset"
 
-        output_dir=$(pwd)/data/${testset}_test
+        output_dir=$(pwd)/${datadir}/${testset}_test
 
         mkdir -p $output_dir
 
@@ -116,7 +117,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
 
     if [ ! -z $ood_testset ]; then
         log "Preparing $ood_testset"
-        output_dir=$(pwd)/data/${ood_testset}_test
+        output_dir=$(pwd)/${datadir}/${ood_testset}_test
 
         mkdir -p $output_dir
 
