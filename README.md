@@ -42,6 +42,6 @@ Please let me (Cihan) know if there is anything missing or there is any bug/erro
 | large-v2 | 110.9 | 113.4 | 25.3 | 57.3 | 56.7 | 19.5 |
 
 ### ST Results (BLEU)
-| Model      | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) |
-| ----------- | ----------- | ----------- | ----------- |
-| large-v2 | 3.3 | 3.5 | 21.9 |
+| Model      | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
+| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
+| large-v2 | 3.3 | 3.5 | 21.9 | 11.2 | 10.2 | 19.9 |

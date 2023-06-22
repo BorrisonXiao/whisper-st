@@ -14,8 +14,8 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-# src_lang=kor
-src_lang=ara
+src_lang=kor
+# src_lang=ara
 tgt_lang=eng
 
 train_set=train-cts
@@ -103,8 +103,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 7 \
-    --stop_stage 7 \
+    --stage 9 \
+    --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \

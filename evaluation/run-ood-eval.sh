@@ -84,10 +84,6 @@ fi
 if "${run_asr}"; then
     echo "No longer supports ASR eval"
     exit 1
-    # asr_opts="--run_asr true \
-    #          --asr_ref_file ${test_score_dir}/text.tc.${src_lang} \
-    #          --asr_utt2spk ${test_score_dir}/utt2spk \
-    #          --asr_hyp_file ${asr_hyp_file}"
 fi
 
 ./run-general-metrics.sh \

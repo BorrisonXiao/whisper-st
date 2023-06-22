@@ -57,21 +57,24 @@ fi
 
 declare -A cts_devset_dict
 
-cts_devset_dict+=(["ara"]="iwslt22")
+cts_devset_dict+=(["ara"]="iwslt22" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
 devset=${cts_devset_dict[${src_lang}]}
 
-stm_dir=/exp/scale23/data/3-way/${src_lang}/devsets/cts
+stm_dir=/exp/scale23/data/3-way/${src_lang}
 
 # Hard coded as ASR eval doesn't use this
 test_score_dir=${score_dir}/st/${model_tag}_${devset}_${src_lang}_dev
 mkdir -p ${test_score_dir}
 
 # Convert STM files to text and utt2spk files
-for stmfile in "$stm_dir/sr.${src_lang}-${src_lang}.${devset}.dev"*".stm"; do
-    set=$(echo $stmfile | awk -F'[_.]' '{print $(NF-1)}')
-    python pyscripts/utils/convert_stm.py $stmfile ${test_score_dir} ${set}.text.tc.${src_lang}
-    python pyscripts/utils/convert_stm.py "$stm_dir/st.${src_lang}-eng.${devset}.${set}.stm" ${test_score_dir} ${set}.text.tc.eng
-done
+# for stmfile in "$stm_dir/sr.${src_lang}-${src_lang}.${devset}.dev"*".stm"; do
+#     set=$(echo $stmfile | awk -F'[_.]' '{print $(NF-1)}')
+#     python pyscripts/utils/convert_stm.py $stmfile ${test_score_dir} ${set}.text.tc.${src_lang}
+#     python pyscripts/utils/convert_stm.py "$stm_dir/st.${src_lang}-eng.${devset}.${set}.stm" ${test_score_dir} ${set}.text.tc.eng
+# done
+python pyscripts/utils/convert_stm.py "$stm_dir/sr.${src_lang}-${src_lang}.dev.stm" ${test_score_dir} dev.text.tc.${src_lang}
+python pyscripts/utils/convert_stm.py "$stm_dir/st.${src_lang}-eng.dev.stm" ${test_score_dir} dev.text.tc.eng
+
 cat ${test_score_dir}/*.text.tc.${src_lang} >${test_score_dir}/text.tc.${src_lang}
 cat ${test_score_dir}/*.text.tc.eng >${test_score_dir}/text.tc.eng
 
@@ -88,10 +91,6 @@ fi
 if "${run_asr}"; then
     echo "No longer supports ASR eval"
     exit 1
-    # asr_opts="--run_asr true \
-    #          --asr_ref_file ${test_score_dir}/text.tc.${src_lang} \
-    #          --asr_utt2spk ${test_score_dir}/utt2spk \
-    #          --asr_hyp_file ${asr_hyp_file}"
 fi
 
 ./run-general-metrics.sh \

@@ -905,8 +905,8 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
 
     # Note that we assume the evaluation code is available in the path
     # for dset in ${valid_set} ${test_sets}; do
-    for dset in ${valid_set}; do
-    # for dset in ${test_sets}; do
+    # for dset in ${valid_set}; do
+    for dset in ${test_sets}; do
         log "Running evaluation on ${dset}"
 
         if [ "${dset}" = "${valid_set}" ]; then
@@ -917,7 +917,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${st_exp}/${dset}"
+        _dir="${st_exp}/${src_lang}/${dset}"
         st_hyp_file="${PWD}/${_dir}/st.text"
         cd evaluation
         $eval_script \
