@@ -57,7 +57,7 @@ fi
 
 declare -A cts_devset_dict
 
-cts_devset_dict+=(["ara"]="iwslt22" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
+cts_devset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
 devset=${cts_devset_dict[${src_lang}]}
 
 stm_dir=/exp/scale23/data/3-way/${src_lang}

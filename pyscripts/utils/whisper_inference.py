@@ -9,6 +9,7 @@ from tqdm import tqdm
 LANGS = {
     "ara": "Arabic",
     "kor": "Korean",
+    "cmn": "Chinese",
     "eng": "English",
 }
 

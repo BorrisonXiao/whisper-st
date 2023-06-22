@@ -31,17 +31,26 @@ and
 Please let me (Cihan) know if there is anything missing or there is any bug/error.
 
 # Results
+The results below are evaluated based on the `large-v2` whisper model.
 ### ASR Results (CER)
-| Model | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
-| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
-| large-v2 | 79.1 | 77.2 | 8.9 | - | 37.7 | 5.2 |
+| Language | dev | test | fleurs.test |
+| ----------- | ----------- | ----------- | ----------- |
+| Arabic (iwslt) | 79.1 | 77.2 | 8.9 |
+| Korean (uhara) | - | 37.7 | 5.2 |
+| Chinese (bbn_cts_bolt) | 39.4 | 36.5 | 23.7 |
+
+Note that the results for Chinese is unnormalized, i.e. the hyp contains a lot of traditional Chinese characters whereas the ref is in simplified Chinese only. Also the fleurs testset for Arabic is MSA whereas the iwslt dev and test sets are in Tunisian (a dialect).
 
 ### ASR Results (WER)
-| Model | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
-| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
-| large-v2 | 110.9 | 113.4 | 25.3 | 57.3 | 56.7 | 19.5 |
+| Language | dev | test | fleurs.test |
+| ----------- | ----------- | ----------- | ----------- |
+| Arabic (iwslt) | 110.9 | 113.4 | 25.3 |
+| Korean (uhara) |  57.3 | 56.7 | 19.5 |
+| Chinese (bbn_cts_bolt) |  - | - | - |
 
 ### ST Results (BLEU)
-| Model      | iwslt.dev (ara) | iwslt.test (ara) | fleurs.test (ara) | uhura.dev (kor) | uhura.test (kor) | fleurs (kor) |
-| ----------- | ----------- | ----------- | ----------- | ----------- | ----------- | ----------- |
-| large-v2 | 3.3 | 3.5 | 21.9 | 11.2 | 10.2 | 19.9 |
+| Language | dev | test | fleurs.test |
+| ----------- | ----------- | ----------- | ----------- |
+| Arabic (iwslt) | 3.3 | 3.5 | 21.9 |
+| Korean (uhara) | 11.2 | 10.2 | 19.9 |
+| Chinese (bbn_cts_bolt) |  9.9 | 11.4 | 17.0 |

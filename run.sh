@@ -14,8 +14,10 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-src_lang=kor
+# src_lang=kor
 # src_lang=ara
+# src_lang=cmn
+src_lang=spa
 tgt_lang=eng
 
 train_set=train-cts
@@ -23,8 +25,6 @@ train_dev=dev
 
 declare -A testset_dict
 
-# TODO (Cihan): Fix the iwslt22_test set inference error
-# ["ara"]="iwslt22_test fleurs_test" \
 testset_dict+=(
     ["ara"]="fleurs_test iwslt22_test"
     ["cmn"]="bbn_cts_bolt_test fleurs_test"
@@ -103,8 +103,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 9 \
-    --stop_stage 9 \
+    --stage 0 \
+    --stop_stage 5 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \
