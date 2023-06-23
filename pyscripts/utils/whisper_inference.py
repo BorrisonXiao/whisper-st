@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Copyright 2023 Johns Hopkins University (Cihan Xiao)
 # -*- coding: utf-8 -*-
 
 import whisper
@@ -10,6 +11,8 @@ LANGS = {
     "ara": "Arabic",
     "kor": "Korean",
     "cmn": "Chinese",
+    "spa": "Spanish",
+    "rus": "Russian",
     "eng": "English",
 }
 

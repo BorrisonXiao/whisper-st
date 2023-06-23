@@ -17,7 +17,8 @@ set -o pipefail
 # src_lang=kor
 # src_lang=ara
 # src_lang=cmn
-src_lang=spa
+# src_lang=spa
+src_lang=rus
 tgt_lang=eng
 
 train_set=train-cts
@@ -103,8 +104,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 0 \
-    --stop_stage 5 \
+    --stage 8 \
+    --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \

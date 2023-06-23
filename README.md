@@ -38,6 +38,8 @@ The results below are evaluated based on the `large-v2` whisper model.
 | Arabic (iwslt) | 79.1 | 77.2 | 8.9 |
 | Korean (uhara) | - | 37.7 | 5.2 |
 | Chinese (bbn_cts_bolt) | 39.4 | 36.5 | 23.7 |
+| Spanish (fisher \| callhome) | - | - \| - | - |
+| Russian (uhara) | - | - | - |
 
 Note that the results for Chinese is unnormalized, i.e. the hyp contains a lot of traditional Chinese characters whereas the ref is in simplified Chinese only. Also the fleurs testset for Arabic is MSA whereas the iwslt dev and test sets are in Tunisian (a dialect).
 
@@ -46,7 +48,9 @@ Note that the results for Chinese is unnormalized, i.e. the hyp contains a lot o
 | ----------- | ----------- | ----------- | ----------- |
 | Arabic (iwslt) | 110.9 | 113.4 | 25.3 |
 | Korean (uhara) |  57.3 | 56.7 | 19.5 |
-| Chinese (bbn_cts_bolt) |  - | - | - |
+| Chinese (bbn_cts_bolt) | 39.4 | 36.5 | 23.7 |
+| Spanish (fisher \| callhome) | 29.1 | 23.4 \| 29.4 | 15.2 |
+| Russian (uhara) | 27.3 | 32.8 | 5.5 |
 
 ### ST Results (BLEU)
 | Language | dev | test | fleurs.test |
@@ -54,3 +58,5 @@ Note that the results for Chinese is unnormalized, i.e. the hyp contains a lot o
 | Arabic (iwslt) | 3.3 | 3.5 | 21.9 |
 | Korean (uhara) | 11.2 | 10.2 | 19.9 |
 | Chinese (bbn_cts_bolt) |  9.9 | 11.4 | 17.0 |
+| Spanish (fisher \| callhome) | 30.3 | 30.1 \| 24.9 | 22.9 |
+| Russian (uhara) | 21.5 | 22.2 | 27.6 |

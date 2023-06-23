@@ -837,13 +837,14 @@ if ! "${skip_data_prep}"; then
 
             _dir="${st_exp}/${src_lang}/${dset}"
             _asr_hyp="${PWD}/${_dir}/text"
+            _dset=$(echo "${dset}" | sed 's/_test$//')
             cd evaluation
             ${eval_script} \
                 --src_lang ${src_lang} \
                 --asr_hyp_file "${_asr_hyp}" \
                 --sclite ${sclite_path} \
                 --model_tag ${model_name} \
-                --dset "${dset}"
+                --dset "${_dset}"
             cd -
         done
     fi
@@ -853,8 +854,8 @@ fi
 
 if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ST inference on the dev/test data."
-    for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
+    # for dset in ${valid_set} ${test_sets}; do
+    for dset in ${valid_set}; do
     # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
@@ -883,7 +884,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
         #       but it's used only for deciding the sample ids.
         # shellcheck disable=SC2046,SC2086
-        ${cuda_cmd} --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+        ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
             pyscripts/utils/whisper_inference.py \
             --keyfile ${_logdir}/decode.JOB.scp \
             --src-lang ${src_lang} \
@@ -904,8 +905,8 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     log "Stage 9: Run evaluation on the ST decoded data."
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
+    # for dset in ${valid_set} ${test_sets}; do
+    for dset in ${valid_set}; do
     # for dset in ${test_sets}; do
         log "Running evaluation on ${dset}"
 
@@ -918,6 +919,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
         fi
 
         _dir="${st_exp}/${src_lang}/${dset}"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
         st_hyp_file="${PWD}/${_dir}/st.text"
         cd evaluation
         $eval_script \
@@ -925,7 +927,8 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --src_lang ${src_lang} \
             --st_hyp_file ${st_hyp_file} \
             --model_tag ${model_name} \
-            --score_dir scores
+            --score_dir scores \
+            --dset "${_dset}"
         cd -
     done
 fi

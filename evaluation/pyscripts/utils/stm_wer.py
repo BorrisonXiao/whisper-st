@@ -73,7 +73,11 @@ def _parse_stm_line(l):
     try:
         path, channel, speaker, start, end, lbl, text = l.strip().split(None, 6)
     except ValueError:
-        path, channel, speaker, start, end, lbl = l.strip().split(None, 5)
+        try:
+            path, channel, speaker, start, end, lbl = l.strip().split(None, 5)
+        except ValueError:
+            path, channel, speaker, start, end = l.strip().split(None, 4)
+            lbl = ''
         text = ''
     recoid = path.replace("//", "/")
     text, _ = _reformat_mixed_mandarin_text(text)

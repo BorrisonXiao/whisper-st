@@ -29,6 +29,7 @@ run_st=false  # Run ST scoring
 run_asr=false # Run ASR scoring
 python=python3
 model_tag=base
+dset=
 
 # Options
 st_hyp_file=  # Hypothesis file for ST
@@ -57,8 +58,8 @@ fi
 
 declare -A cts_devset_dict
 
-cts_devset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
-devset=${cts_devset_dict[${src_lang}]}
+cts_devset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher callhome")
+devset=${dset}
 
 stm_dir=/exp/scale23/data/3-way/${src_lang}
 

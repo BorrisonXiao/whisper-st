@@ -29,6 +29,7 @@ run_st=false  # Run ST scoring
 run_asr=false # Run ASR scoring
 python=python3
 model_tag=base
+dset=         # Not really used, just for entry point consistency
 
 # Options
 st_hyp_file=  # Hypothesis file for ST

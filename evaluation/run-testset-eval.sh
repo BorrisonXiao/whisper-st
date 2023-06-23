@@ -29,6 +29,7 @@ run_st=false  # Run ST scoring
 run_asr=false # Run ASR scoring
 python=python3
 model_tag=base
+dset=
 
 # Options
 st_hyp_file=  # Hypothesis file for ST
@@ -57,10 +58,10 @@ fi
 
 declare -A cts_testset_dict
 
-cts_testset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
+cts_testset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher callhome")
 
 stm_dir=/exp/scale23/data/3-way/${src_lang}/testsets/cts/
-testset=${cts_testset_dict[${src_lang}]}
+testset=${dset}
 
 # Hard coded as ASR eval doesn't use this
 test_score_dir=${score_dir}/st/${model_tag}_${testset}_${src_lang}_test

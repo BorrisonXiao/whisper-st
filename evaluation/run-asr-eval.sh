@@ -60,7 +60,7 @@ fi
 declare -A cts_testset_dict
 declare -A ood_testset_dict
 
-cts_testset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher")
+cts_testset_dict+=(["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher callhome")
 ood_testset_dict+=(["ara"]="fleurs" ["cmn"]="fleurs" ["kor"]="fleurs" ["rus"]="fleurs" ["spa"]="fleurs")
 
 if [[ ${dset} == *"dev"* ]]; then
@@ -69,17 +69,18 @@ else
     settype="test"
 fi
 
+cts_testlist="${cts_testset_dict[${src_lang}]}"
+
 if [[ "${dset}" == *"${ood_testset_dict[${src_lang}]}"* ]]; then
     dset="${ood_testset_dict[${src_lang}]}"
     stm_dir=/exp/scale23/data/3-way/${src_lang}/testsets/ood
     testset=${ood_testset_dict[${src_lang}]}
-elif [[ "${dset}" == *"${cts_testset_dict[${src_lang}]}"* ]]; then
-    dset="${cts_testset_dict[${src_lang}]}"
+elif [[ " ${cts_testlist[*]} " =~ " ${dset} " ]]; then
     stm_dir=/exp/scale23/data/3-way/${src_lang}/testsets/cts
-    testset=${cts_testset_dict[${src_lang}]}
+    testset=${dset}
 else
     stm_dir=/exp/scale23/data/3-way/${src_lang}
-    testset=${cts_testset_dict[${src_lang}]}
+    testset=${dset}
 fi
 
 test_score_dir=${score_dir}/asr/${model_tag}_${testset}_${src_lang}_${settype}
