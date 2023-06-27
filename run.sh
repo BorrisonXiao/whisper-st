@@ -16,9 +16,9 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
-src_lang=rus
+# src_lang=rus
 tgt_lang=eng
 
 train_set=train-cts
@@ -26,9 +26,10 @@ train_dev=dev
 
 declare -A testset_dict
 
+# ["cmn"]="bbn_cts_bolt_test fleurs_test"
 testset_dict+=(
     ["ara"]="fleurs_test iwslt22_test"
-    ["cmn"]="bbn_cts_bolt_test fleurs_test"
+    ["cmn"]="bbn_cts_bolt_test"
     ["kor"]="uhura_test fleurs_test"
     ["rus"]="uhura_test fleurs_test"
     ["spa"]="fisher_test callhome_test fleurs_test")
@@ -39,6 +40,7 @@ test_set=${testset_dict[${src_lang}]} #"fisher callhome fleurs" # This option is
 st_config=conf/train_st_baseline.yaml
 inference_config=conf/decode_st.yaml
 
+framework=huggingface # huggingface, openai
 model=large-v2 # base, large, large-v2 etc.
 # model=base # base, large, large-v2 etc.
 inference_nj=8 # Number of jobs for decoding, note that each job will use a GPU
@@ -57,6 +59,7 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 datadir=data/${src_lang}
+hf_datadir=/expscratch/dchakraborty/hf_datasets/scale23/data/multi
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
 local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -104,11 +107,13 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 8 \
-    --stop_stage 9 \
+    --stage 6 \
+    --stop_stage 6 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \
     --st_tag whisper_${model} \
     --model_name ${model} \
-    --inference_nj ${inference_nj}
+    --inference_nj ${inference_nj} \
+    --framework ${framework} \
+    --hf_datadir ${hf_datadir}

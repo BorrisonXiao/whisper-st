@@ -30,22 +30,24 @@ bpe_predefined=false
 src_inference_lm=
 datadir=
 token_listdir=
-stage=1              # Processes starts from the specified stage.
-stop_stage=10000     # Processes is stopped at the specified stage.
-skip_data_prep=false # Skip data preparation stages.
-skip_train=false     # Skip training stages.
-skip_eval=false      # Skip decoding and evaluation stages.
-skip_upload=true     # Skip packing and uploading stages.
-skip_upload_hf=true  # Skip uploading to hugging face stages.
-ngpu=1               # The number of gpus ("0" uses cpu, otherwise use gpu).
-num_nodes=1          # The number of nodes.
-nj=32                # The number of parallel jobs.
-inference_nj=32      # The number of parallel jobs in decoding.
-gpu_inference=false  # Whether to perform gpu decoding.
-dumpdir=dump         # Directory to dump features.
-expdir=exp           # Directory to save experiments.
-python=python3       # Specify python to execute espnet commands.
-model_name=base      # Model name, e.g. "base", "large", etc.
+stage=1               # Processes starts from the specified stage.
+stop_stage=10000      # Processes is stopped at the specified stage.
+skip_data_prep=false  # Skip data preparation stages.
+skip_train=false      # Skip training stages.
+skip_eval=false       # Skip decoding and evaluation stages.
+skip_upload=true      # Skip packing and uploading stages.
+skip_upload_hf=true   # Skip uploading to hugging face stages.
+ngpu=1                # The number of gpus ("0" uses cpu, otherwise use gpu).
+num_nodes=1           # The number of nodes.
+nj=32                 # The number of parallel jobs.
+inference_nj=32       # The number of parallel jobs in decoding.
+gpu_inference=false   # Whether to perform gpu decoding.
+dumpdir=dump          # Directory to dump features.
+expdir=exp            # Directory to save experiments.
+python=python3        # Specify python to execute espnet commands.
+model_name=base       # Model name, e.g. "base", "large", etc.
+framework=huggingface # huggingface, openai
+hf_datadir=           # Directory to the hugging face dataset.
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -286,7 +288,11 @@ if [ $# -ne 0 ]; then
     exit 2
 fi
 
-. ./path.sh
+if [ "${framework}" == "huggingface" ]; then
+    . ./path_hf.sh
+else
+    . ./path.sh
+fi
 . ./cmd.sh
 
 # Check required arguments
@@ -479,7 +485,11 @@ if [ -z "${lm_stats_dir}" ]; then
 fi
 # The directory used for training commands
 if [ -z "${st_exp}" ]; then
-    st_exp="${expdir}/st_${st_tag}"
+    if [ "${framework}" = "huggingface" ]; then
+        st_exp="${expdir}/st_hf_${st_tag}"
+    else
+        st_exp="${expdir}/st_${st_tag}"
+    fi
 fi
 if [ -z "${lm_exp}" ]; then
     lm_exp="${expdir}/lm_${lm_tag}"
@@ -776,87 +786,96 @@ if ! "${skip_data_prep}"; then
             cat ${data_feats}${_suf}/${dset}/wav/*/wav.scp >${data_feats}${_suf}/${dset}/wav_raw.scp
         done
     fi
-
-    if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
-        log "Stage 6: Run (distributed) ASR inference on the dev/test data."
-        for dset in ${valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
-            if [ "${dset}" = "${valid_set}" ]; then
-                _suf="/org"
-            else
-                _suf=""
-            fi
-            _dsetdir=${data_feats}${_suf}/${dset}
-            _dir="${st_exp}/${src_lang}/${dset}"
-            _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
-            mkdir -p "${_logdir}"
-
-            # 1. Split the key file
-            _nj=$(min "${inference_nj}" "$(wc <${_dsetdir}/wav_raw.scp -l)")
-
-            key_file=${_dsetdir}/wav_raw.scp
-            split_scps=""
-            for n in $(seq "${_nj}"); do
-                split_scps+=" ${_logdir}/decode.${n}.scp"
-            done
-            # shellcheck disable=SC2086
-            utils/split_scp.pl "${key_file}" ${split_scps}
-
-            # 2. Submit jobs
-            log "Inference started... log: '${_logdir}/decode.*.log'"
-
-            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-            #       but it's used only for deciding the sample ids.
-            # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
-                pyscripts/utils/whisper_inference.py \
-                --keyfile ${_logdir}/decode.JOB.scp \
-                --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
-                --output_dir ${_logdir}/output.JOB \
-                --model_name ${model_name}
-
-            # 3. Concatenates the output files from each jobs
-            mkdir -p "${_dir}"
-            for i in $(seq "${_nj}"); do
-                cat "${_logdir}/output.${i}/text"
-            done | LC_ALL=C sort -k1 >"${_dir}/text"
-        done
-    fi
-
-    if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-        log "Stage 7: Run evaluation on the ASR decoded data."
-
-        # Note that we assume the evaluation code is available in the path
-        for dset in ${valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
-            log "Running evaluation on ${dset}"
-            eval_script=run-asr-eval.sh
-
-            _dir="${st_exp}/${src_lang}/${dset}"
-            _asr_hyp="${PWD}/${_dir}/text"
-            _dset=$(echo "${dset}" | sed 's/_test$//')
-            cd evaluation
-            ${eval_script} \
-                --src_lang ${src_lang} \
-                --asr_hyp_file "${_asr_hyp}" \
-                --sclite ${sclite_path} \
-                --model_tag ${model_name} \
-                --dset "${_dset}"
-            cd -
-        done
-    fi
 else
     log "Skip the stages for data preparation"
+fi
+
+if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
+    log "Stage 6: Run (distributed) ASR inference on the dev/test data."
+    # for dset in ${valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
+    for dset in ${test_sets}; do
+        if [ "${dset}" = "${valid_set}" ]; then
+            _suf="/org"
+        else
+            _suf=""
+        fi
+        _dsetdir=${data_feats}${_suf}/${dset}
+        _dir="${st_exp}/${src_lang}/${dset}"
+        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
+        mkdir -p "${_logdir}"
+
+        # 1. Split the key file
+        _nj=$(min "${inference_nj}" "$(wc <${_dsetdir}/wav_raw.scp -l)")
+
+        key_file=${_dsetdir}/wav_raw.scp
+        split_scps=""
+        for n in $(seq "${_nj}"); do
+            split_scps+=" ${_logdir}/decode.${n}.scp"
+        done
+        # shellcheck disable=SC2086
+        utils/split_scp.pl "${key_file}" ${split_scps}
+
+        # 2. Submit jobs
+        log "Inference started... log: '${_logdir}/decode.*.log'"
+
+        opts=
+        if [ "${framework}" == "huggingface" ]; then
+            _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+            opts+=" --dset ${_hf_dset} "
+            inference_tool="pyscripts/utils/hf_whisper_inference.py"
+        else
+            inference_tool="pyscripts/utils/whisper_inference.py"
+        fi
+
+        # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+        #       but it's used only for deciding the sample ids.
+        # shellcheck disable=SC2046,SC2086
+        ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${inference_tool} \
+            --keyfile ${_logdir}/decode.JOB.scp \
+            --src-lang ${src_lang} \
+            --tgt-lang ${tgt_lang} \
+            --output_dir ${_logdir}/output.JOB \
+            --model_name ${model_name} ${opts}
+
+        # 3. Concatenates the output files from each jobs
+        mkdir -p "${_dir}"
+        for i in $(seq "${_nj}"); do
+            cat "${_logdir}/output.${i}/text"
+        done | LC_ALL=C sort -k1 >"${_dir}/text"
+    done
+fi
+
+if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+    log "Stage 7: Run evaluation on the ASR decoded data."
+
+    # Note that we assume the evaluation code is available in the path
+    for dset in ${valid_set} ${test_sets}; do
+        # for dset in ${valid_set}; do
+        # for dset in ${test_sets}; do
+        log "Running evaluation on ${dset}"
+        eval_script=run-asr-eval.sh
+
+        _dir="${st_exp}/${src_lang}/${dset}"
+        _asr_hyp="${PWD}/${_dir}/text"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
+        cd evaluation
+        ${eval_script} \
+            --src_lang ${src_lang} \
+            --asr_hyp_file "${_asr_hyp}" \
+            --sclite ${sclite_path} \
+            --model_tag ${model_name} \
+            --dset "${_dset}"
+        cd -
+    done
 fi
 
 if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ST inference on the dev/test data."
     # for dset in ${valid_set} ${test_sets}; do
     for dset in ${valid_set}; do
-    # for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
         else
@@ -881,17 +900,26 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         # 2. Submit jobs
         log "Inference started... log: '${_logdir}/decode.*.log'"
 
+        opts=
+        if [ "${framework}" == "huggingface" ]; then
+            _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+            opts+=" --dset ${_hf_dset} "
+            inference_tool="pyscripts/utils/hf_whisper_inference.py"
+        else
+            inference_tool="pyscripts/utils/whisper_inference.py"
+        fi
+
         # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
         #       but it's used only for deciding the sample ids.
         # shellcheck disable=SC2046,SC2086
         ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
-            pyscripts/utils/whisper_inference.py \
+            ${inference_tool} \
             --keyfile ${_logdir}/decode.JOB.scp \
             --src-lang ${src_lang} \
             --tgt-lang ${tgt_lang} \
             --output_dir ${_logdir}/output.JOB \
             --model_name ${model_name} \
-            --task "translate"
+            --task "translate" ${opts}
 
         # 3. Concatenates the output files from each jobs
         mkdir -p "${_dir}"
@@ -907,7 +935,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     # Note that we assume the evaluation code is available in the path
     # for dset in ${valid_set} ${test_sets}; do
     for dset in ${valid_set}; do
-    # for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
         log "Running evaluation on ${dset}"
 
         if [ "${dset}" = "${valid_set}" ]; then
