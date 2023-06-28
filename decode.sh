@@ -793,8 +793,8 @@ fi
 if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
     log "Stage 6: Run (distributed) ASR inference on the dev/test data."
     # for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
-    for dset in ${test_sets}; do
+    for dset in ${valid_set}; do
+    # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
         else
@@ -851,8 +851,8 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     log "Stage 7: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
+    # for dset in ${valid_set} ${test_sets}; do
+        for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
@@ -860,13 +860,19 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         _dir="${st_exp}/${src_lang}/${dset}"
         _asr_hyp="${PWD}/${_dir}/text"
         _dset=$(echo "${dset}" | sed 's/_test$//')
+
+        opts=
+        if [ "${src_lang}" == "ara" ]; then
+            opts+=" --arabic true "
+        fi
+
         cd evaluation
         ${eval_script} \
             --src_lang ${src_lang} \
-            --asr_hyp_file "${_asr_hyp}" \
+            --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --model_tag ${model_name} \
-            --dset "${_dset}"
+            --dset "${_dset}" ${opts}
         cd -
     done
 fi

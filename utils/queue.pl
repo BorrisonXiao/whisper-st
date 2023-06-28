@@ -169,7 +169,7 @@ if (exists $cli_options{"config"}) {
 my $default_config_file = <<'EOF';
 # Default configuration
 command qsub -v PATH -cwd -S /bin/bash -j y -l arch=*64*
-option mem=* -l mem_free=$0,ram_free=$0
+option mem=* -l mem_free=$0
 option mem=0          # Do not add anything to qsub_opts
 option num_threads=* -pe smp $0
 option num_threads=1  # Do not add anything to qsub_opts

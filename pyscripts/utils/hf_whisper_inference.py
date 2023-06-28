@@ -41,7 +41,7 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, task="t
     # Load the keyfile
     if keyfile is not None:
         with open(keyfile, "r") as f:
-            lines = f.readlines()[:50]
+            lines = f.readlines()
         keys = set([line.strip().split(maxsplit=1)[0] for line in lines])
 
     # Load the HF dataset
@@ -50,11 +50,13 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, task="t
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / "text"
     with open(output, "w") as f:
-        for utt in tqdm(ds):
-            uttid = utt["utterance_id"]
+        total_len = len(ds) if keyfile is None else len(keys)
+        pbar = tqdm(range(total_len))
+        for utt in ds:
+            uttid = utt["uttid"]
             if keyfile is not None and uttid not in keys:
                 continue
-            input_speech = utt["audio_path"]
+            input_speech = utt["audio"]
             input_features = processor(
                 input_speech["array"], sampling_rate=input_speech["sampling_rate"], return_tensors="pt").input_features.to(device)
             # Generate token ids
@@ -65,6 +67,8 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, task="t
                 predicted_ids, skip_special_tokens=True)[0]
             print(uttid, hyp, file=f)
             f.flush()
+            pbar.update(1)
+            pbar.refresh()
 
 
 def main():

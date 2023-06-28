@@ -25,10 +25,8 @@ def clean(ref, outfile, lang):
             text = splitted[-1]
             text = text.strip()
             text = text.replace("--", "")
-            # text = text.replace("!", "")
-            # text = text.replace("?", "")
-            # text = text.replace("~", "")
-            text = normalizer(text)
+            # Note: no longer applying whisper normalizer
+            # text = normalizer(text)
             text = text.replace("  ", " ")
             print(headers, text, file=f2)
 

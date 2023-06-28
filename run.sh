@@ -41,6 +41,7 @@ st_config=conf/train_st_baseline.yaml
 inference_config=conf/decode_st.yaml
 
 framework=huggingface # huggingface, openai
+# framework=openai # huggingface, openai
 model=large-v2 # base, large, large-v2 etc.
 # model=base # base, large, large-v2 etc.
 inference_nj=8 # Number of jobs for decoding, note that each job will use a GPU
@@ -59,7 +60,7 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 datadir=data/${src_lang}
-hf_datadir=/expscratch/dchakraborty/hf_datasets/scale23/data/multi
+hf_datadir=/expscratch/dchakraborty/hf_datasets/scale23/data/all
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
 local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -107,8 +108,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 6 \
-    --stop_stage 6 \
+    --stage 7 \
+    --stop_stage 7 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \

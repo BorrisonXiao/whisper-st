@@ -104,7 +104,7 @@ if [ -n "${segments}" ]; then
     utils/split_scp.pl "${segments}" ${split_segments}
 
     ml load sox/14.4.2
-    ${cmd} "JOB=1:${nj}" "${logdir}/format_wav_scp.JOB.log" \
+    ${cmd} -l "hostname=!r4n20" "JOB=1:${nj}" "${logdir}/format_wav_scp.JOB.log" \
         pyscripts/audio/format_wav_scp.py \
             ${opts} \
             --fs ${fs} \

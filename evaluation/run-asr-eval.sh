@@ -25,24 +25,30 @@ SECONDS=0
 # General options
 src_lang=ara
 score_dir=scores # Top directory to store results
-run_st=false     # Run ST scoring
-run_asr=true     # Run ASR scoring
 python=python3
 model_tag=base
 sclite=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
+ref_asr=
+hyp_asr=/home/hltcoe/cxiao/scale23/whisper/recipe/st/exp/st_whisper_base/dev/text
+arabic=false
 dset=dev
 
 declare -A dev_sets_dict
-dev_sets_dict+=(["ara"]="dev1 dev2")
+dev_sets_dict+=(["ara"]="dev1 dev2")                                                                      # If true use WER, otherwise use CER
 
-# Options
-st_hyp_file=                                                                           # Hypothesis file for ST
-asr_hyp_file=/home/hltcoe/cxiao/scale23/whisper/recipe/st/exp/st_whisper_base/dev/text # Hypothesis file for ASR
-use_cer=false                                                                          # If true use WER, otherwise use CER
+help_message=$(cat << EOF
+Usage: $0 --score_dir <path_to_dir> --ref_mt <path_to_ref_file> --hyp_mt <path_to_hyp_file>
 
-help_message=$(
-    cat <<EOF
-Usage: $0
+Options:
+    --score_dir     # Directory to store results.
+    --src_lang      # Source language trigraph.
+    --ref_mt        # Reference file for translation. STM format.
+    --hyp_mt        # Hypothesis file for translation. STM format.
+    --ref_asr       # Reference file for ASR. STM format.
+    --hyp_asr       # Hypothesis file for ASR. STM format.
+    --arabic        # Choose Arabic normalization for ASR (default="${arabic}").
+    --python        # Specify python command (default="${python}").
+    --sclite        # Sclite binary (default="${sclite}").
 EOF
 )
 
@@ -86,6 +92,10 @@ fi
 test_score_dir=${score_dir}/asr/${model_tag}_${testset}_${src_lang}_${settype}
 mkdir -p "${test_score_dir}/data"
 
+if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then
+    rm "${test_score_dir}/result.lc.rm.txt"
+fi
+
 if [ "${settype}" = "dev" ]; then
     # Convert STM files to text and utt2spk files
     cat $stm_dir/sr.${src_lang}-${src_lang}.dev.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.dev.stm"
@@ -93,40 +103,19 @@ else
     cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}.test.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
 fi
 
-st_opts=""
-asr_opts=""
-
-if "${run_st}"; then
-    st_opts="--run_st true \
-            --st_ref_file ${test_score_dir}/text.tc.eng \
-            --st_utt2spk ${test_score_dir}/utt2spk \
-            --st_hyp_file ${st_hyp_file}"
-fi
-
-if "${run_asr}"; then
-    asr_opts="--run_asr true \
-             --asr_ref_file ${test_score_dir}/text.tc.${src_lang} \
-             --asr_utt2spk ${test_score_dir}/utt2spk \
-             --asr_hyp_file ${asr_hyp_file}"
-fi
-
-# Clean the reference file, remove the --- which is some sort of special character for sclite
-pyscripts/utils/clean_stm.py \
-    -i "${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.${settype}.stm" \
-    -o "${test_score_dir}/data/ref.stm"
-
 # Convert the hypothesis file to STM format
 pyscripts/utils/text2stm.py \
-    -i "${asr_hyp_file}" \
+    -i "${hyp_asr}" \
     -o "${test_score_dir}/data/_hyp.stm" \
-    -r "${test_score_dir}/data/ref.stm" \
+    -r "${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.${settype}.stm" \
     --dset ${dset}
 
-pyscripts/utils/clean_stm.py \
-    -i "${test_score_dir}/data/_hyp.stm" \
-    -o "${test_score_dir}/data/hyp.stm"
-
-# Run the eval script
-pyscripts/utils/stm_wer.py \
-    ${sclite} "${test_score_dir}/data/ref.stm" "${test_score_dir}/data/hyp.stm" \
-    "${test_score_dir}/results"
+# Invoke the updated evaluation script
+./run_scale23_evals.sh \
+    --score_dir "${test_score_dir}" \
+    --src_lang "${src_lang}" \
+    --hyp_asr "${test_score_dir}/data/_hyp.stm" \
+    --ref_asr "${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.${settype}.stm" \
+    --arabic "${arabic}" \
+    --python "${python}" \
+    --sclite "${sclite}"
