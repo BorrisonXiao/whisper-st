@@ -27,19 +27,22 @@ def main(args):
          open(output_stm, 'w', encoding='utf-8') as out_f:
 
         for line in hyp_f:
-            key = " ".join(line.split(" ")[0:6])
-            text = " ".join(line.split(" ")[6:]).strip()
-
+            path, chn, spk, start, end, lbl, text = line.split(None, 6)
+            path = path.replace("//", "/")
+            key = f'{path} {chn} {spk} {float(start):0.2f} {float(end):0.2f} {lbl}'
+            text = text.strip()
             hyp_dict[key] = text
 
         for line in ref_f:
-            key = " ".join(line.split(" ")[0:6])
+            path, chn, spk, start, end, lbl, text = line.split(None, 6)
+            path = path.replace("//", "/")
+            key = f'{path} {chn} {spk} {float(start):0.2f} {float(end):0.2f} {lbl}'
             ref_list.append(key)
 
         for key in ref_list:
-            if key in hyp_dict:
+            if key.replace("//","/") in hyp_dict:
                 # If line exists in hyp, re-add as-is
-                stm_line = "%s %s" % (key, hyp_dict[key])
+                stm_line = f"{key} {hyp_dict[key]}"
                 stm_lists.append(stm_line)
             else:
                 # If line doesn't exist in hyp, add as empty line

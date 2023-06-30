@@ -28,10 +28,10 @@ score_dir=scores # Top directory to store results
 python=python3
 model_tag=base
 sclite=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
-ref_asr=
 hyp_asr=/home/hltcoe/cxiao/scale23/whisper/recipe/st/exp/st_whisper_base/dev/text
 arabic=false
 dset=dev
+framework=openai
 
 declare -A dev_sets_dict
 dev_sets_dict+=(["ara"]="dev1 dev2")                                                                      # If true use WER, otherwise use CER
@@ -89,7 +89,11 @@ else
     testset=${dset}
 fi
 
-test_score_dir=${score_dir}/asr/${model_tag}_${testset}_${src_lang}_${settype}
+_prefix=
+if [ "${framework}" == "huggingface" ]; then
+    _prefix+="hf_"
+fi
+test_score_dir=${score_dir}/asr/${_prefix}${model_tag}_${testset}_${src_lang}_${settype}
 mkdir -p "${test_score_dir}/data"
 
 if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then

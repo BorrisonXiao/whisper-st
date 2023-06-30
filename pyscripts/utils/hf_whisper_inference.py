@@ -68,7 +68,6 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, task="t
             print(uttid, hyp, file=f)
             f.flush()
             pbar.update(1)
-            pbar.refresh()
 
 
 def main():

@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-#$ -N st_train
-
-#$ -o /home/hltcoe/cxiao/scale23/whisper/recipe
-#$ -e /home/hltcoe/cxiao/scale23/whisper/recipe
-
 #$ -cwd
 
 # Set bash to 'debug' mode, it will exit on :
@@ -15,8 +10,8 @@ set -o pipefail
 
 # Change the following according to your experiments
 # src_lang=kor
-# src_lang=ara
-src_lang=cmn
+src_lang=ara
+# src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 tgt_lang=eng
@@ -26,15 +21,15 @@ train_dev=dev
 
 declare -A testset_dict
 
-# ["cmn"]="bbn_cts_bolt_test fleurs_test"
 testset_dict+=(
     ["ara"]="fleurs_test iwslt22_test"
-    ["cmn"]="bbn_cts_bolt_test"
+    ["cmn"]="bbn_cts_bolt_test fleurs_test"
     ["kor"]="uhura_test fleurs_test"
     ["rus"]="uhura_test fleurs_test"
     ["spa"]="fisher_test callhome_test fleurs_test")
 
-test_set=${testset_dict[${src_lang}]} #"fisher callhome fleurs" # This option is to run eval
+# test_set=${testset_dict[${src_lang}]} # This option is to run eval
+test_set="fleurs_test"
 
 #st_config=conf/train_st.yaml
 st_config=conf/train_st_baseline.yaml
@@ -108,8 +103,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 7 \
-    --stop_stage 7 \
+    --stage 6 \
+    --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \

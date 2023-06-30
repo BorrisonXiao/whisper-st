@@ -311,6 +311,12 @@ def _parse_stm_line(l):
     }
 
 
+def _stm_seg_to_str(seg, norm=False):
+    if norm:
+        return f"{seg['recoid']} {seg['channel']} {seg['speaker']} {seg['start']} {seg['end']} {seg['label']} {seg['text_norm']}" 
+    return f"{seg['recoid']} {seg['channel']} {seg['speaker']} {seg['start']} {seg['end']} {seg['label']} {seg['text']}" 
+
+
 def _segment_to_uniform_ctm(seg, normalize=False):
     '''
         Convert an stm segment into a ctm. We make a special case when it comes
@@ -348,9 +354,13 @@ def main(args):
         args.stm_hyp = str(odir / 'hyp.arabic.stm')
         args.stm_ref = str(odir / 'ref.arabic.stm')
 
+    if args.store_normalized_stm is not None:
+        stm_norm = []
     with open(args.stm_hyp, 'r', encoding='utf-8') as fp:
         for l in fp:
             seg = _parse_stm_line(l)
+            if args.store_normalized_stm is not None:
+                stm_norm.append(_stm_seg_to_str(seg, True))
             recoid = seg['recoid']
             if recoid not in recos:
                 recos[recoid] = []
@@ -361,6 +371,11 @@ def main(args):
             if seg['text_norm'] != '':
                 for ctm in _segment_to_uniform_ctm(seg, normalize=True):
                     recos_norm[recoid].append(ctm)
+    
+    if args.store_normalized_stm is not None:
+        with open(args.store_normalized_stm, "w", encoding='utf-8') as f: 
+            for s in stm_norm:
+                print(s, file=f)
 
     stm_recos = {}
     # Read in the reference stm file.
@@ -425,5 +440,7 @@ if __name__ == "__main__":
         "normalization scheme specific for arabic that is consistent with "
         "prior iwslt results."
     )
+    parser.add_argument("--store-normalized-stm", type=str,
+        help="store the normalized stm in this path", default=None)
     args = parser.parse_args()
     main(args)

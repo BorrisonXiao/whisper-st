@@ -18,7 +18,12 @@ def main(args):
     with open(input_stm, 'r', encoding="utf-8") as in_f, open(output_stm, 'w', encoding="utf-8") as out_f:
         for line in in_f:
             pre_line = " ".join(line.split(" ")[0:3])
-            start = float(line.split(" ")[3])
+            try:
+                start = float(line.split(" ")[3])
+            except:
+                print(input_stm)
+                print(line)
+                raise
             end = float(line.split(" ")[4])
             post_line = " ".join(line.split(" ")[5:]).strip()
 

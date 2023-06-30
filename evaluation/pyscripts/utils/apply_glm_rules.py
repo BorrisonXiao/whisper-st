@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
 
     word_mappings = {}
-    GLM_RE = re.compile(u'^(%?\w+)\s+=>\s+(\S+)\s*($|\/|;)', flags=re.UNICODE)
+    GLM_RE = re.compile(u'^\s?(%?\S+)\s+=>\s+((\S+)\s*((\S+)\s*)?)($|\/|;)', flags=re.UNICODE)
     with open(args.glm, 'r', encoding='utf-8') as f:
         for i, line in enumerate(f):
             if line[:2] == ';;':
@@ -24,8 +24,9 @@ def main():
             if glm_match is None:
                 sys.stderr.write('glm line %s (%d) does not match regex\n' % (line.strip(), i+1))
             else:
-                orig_word = glm_match.group(1).lower()
+                orig_word = glm_match.group(1).lower().replace("[","").replace("]","")
                 mapped_word = glm_match.group(2).lower()
+                mapped_word = mapped_word.replace("[","").replace("{","").replace("]","").replace("}","")
                 word_mappings[orig_word] = mapped_word
 
                 # glm might be missing '%' suffix on original word
@@ -36,7 +37,7 @@ def main():
             for line in input_fp:
                 parts = line.strip().split()
                 if len(parts) < 5 or len(parts) > 6:
-                    print("Error bad line in CTM %s : %s" % (args.input, line.encode('utf-8')))
+                    sys.stderr.write("Error bad line in CTM %s : %s\n" % (args.input, line.encode('utf-8')))
                     continue
 
                 audio_filename = parts[0]
@@ -78,7 +79,7 @@ def main():
                 parts = line.strip().split()
 
                 if len(parts) < 7:
-                    print("Error bad line in STM %s : %s" % (args.input_filename, line.encode('utf-8')))
+                    sys.stderr.write("Error bad line in STM %s : %s\n" % (args.input, line.encode('utf-8')))
                     continue
 
                 audio_filename = parts[0]

@@ -23,12 +23,12 @@ min() {
 SECONDS=0
 
 # General options
-score_dir=""
-src_lang=""
-ref_mt=""
-hyp_mt=""
-ref_asr=""
-hyp_asr=""
+score_dir=
+src_lang=
+ref_mt=
+hyp_mt=
+ref_asr=
+hyp_asr=
 arabic=false
 python=python3
 sclite=sclite
@@ -112,14 +112,14 @@ for input_file in $ref_mt $hyp_mt $ref_asr $hyp_asr; do
             glm_lang=${src_lang};;
     esac
 
-    echo "Copying $input_file into $score_dir/$file_copy"
+    echo "Copying ..." #$input_file into $score_dir/$file_copy"
     cp $input_file $score_dir/$file_copy
 
-    echo "Normalize STM times $score_dir/$file_copy"
-    $python pyscripts/utils/normalize_stm_times.py $score_dir/$file_copy $score_dir/${file_copy}.norm
+    echo "Normalize STM times ..." # $score_dir/$file_copy"
+    $python pyscripts/utils/normalize_stm_times.py $score_dir/$file_copy $score_dir/${file_copy}.norm 2> ${score_dir}/normalize.err.log
 
-    echo "Applying GLM rules to $score_dir/$file_copy"
-    $python pyscripts/utils/apply_glm_rules.py $score_dir/$file_copy.norm utils/glm.${glm_lang} stm $score_dir/${file_copy}.glm
+    echo "Applying GLM rules ..." # to $score_dir/$file_copy"
+    $python pyscripts/utils/apply_glm_rules.py $score_dir/$file_copy.norm utils/glm.${glm_lang} stm $score_dir/${file_copy}.glm 2> ${score_dir}/glm.err.log
 done
 
 # Check if ${run_asr}. Run ASR eval here.
@@ -148,16 +148,16 @@ if [ ${run_mt} == true ]; then
                 bitext_file=hyp.tc;;
         esac
 
-        echo "Sorting $input_file"
+        echo "Sorting input file ... " #$input_file"
         sort -t ' ' -k1,5 ${score_dir}/${input_file} > ${score_dir}/${sorted_file}
 
-        echo "Creating ${score_dir}/${bitext_file} ${score_dir}/${sorted_file}"
+        echo "Creating bitext ... " #${score_dir}/${bitext_file} ${score_dir}/${sorted_file}"
         cut -d' ' -f7- "${score_dir}/${sorted_file}" > "${score_dir}/${bitext_file}"
 
     done
     # Clean mt file (remove punctuations, remove non-speech tokens). Lowercase is done via the "-lc" flag on sacrebleu
     for input_type in ref hyp; do
-        echo "Removing punctuatons for ${score_dir}/${input_type}.tc.rm"
+        echo "Removing punctuatons ... " #for ${score_dir}/${input_type}.tc.rm"
         utils/remove_punctuation.pl < "${score_dir}/${input_type}.tc" > "${score_dir}/${input_type}.tc.rm"
     done
 
@@ -171,6 +171,7 @@ if [ ${run_mt} == true ]; then
 
     echo "" >> ${score_dir}/result.lc.rm.txt
 
+    cat ${score_dir}/result.lc.rm.txt
     #echo "Score summary"
     #${python} pyscripts/utils/process_result_file.py --score-only ${score_dir}/result.lc.rm.txt
 fi
