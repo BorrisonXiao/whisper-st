@@ -30,7 +30,18 @@ and
 
 Please let me (Cihan) know if there is anything missing or there is any bug/error.
 
-# Results
+# Results (Huggingface)
+
+### ASR Results (WER)
+| Language | dev | test | fleurs.test |
+| ----------- | ----------- | ----------- | ----------- |
+| Arabic (iwslt) | 142.3 | - | 14.9 |
+| Korean (uhara) |  59.1 | - | 15.6 |
+| Chinese (bbn_cts_bolt) | 34.4 | - | 5.1 |
+| Spanish (fisher \| callhome) | 32.7 | - \| - | - |
+| Russian (uhara) | 35.8 | - | - |
+
+# Results (OpenAI)
 The results below are evaluated based on the `large-v2` whisper model.
 ### ASR Results (CER)
 | Language | dev | test | fleurs.test |
