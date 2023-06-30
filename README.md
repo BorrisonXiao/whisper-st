@@ -38,8 +38,17 @@ Please let me (Cihan) know if there is anything missing or there is any bug/erro
 | Arabic (iwslt) | 142.3 | - | 14.9 |
 | Korean (uhara) |  59.1 | - | 15.6 |
 | Chinese (bbn_cts_bolt) | 34.4 | - | 5.1 |
-| Spanish (fisher \| callhome) | 32.7 | - \| - | - |
+| Spanish (fisher \| callhome) | 32.7 | - \| - | 15.3 |
 | Russian (uhara) | 35.8 | - | - |
+
+### ST Results (BLEU)
+| Language | dev | test | fleurs.test |
+| ----------- | ----------- | ----------- | ----------- |
+| Arabic (iwslt) | 2.5 | - | 22.6 |
+| Korean (uhara) | 11.7 | - | 20.7 |
+| Chinese (bbn_cts_bolt) |  9.7 | - | 17.4 |
+| Spanish (fisher \| callhome) | 30.6 | - \| - | 23.4 |
+| Russian (uhara) | 20.2 | - | - |
 
 # Results (OpenAI)
 The results below are evaluated based on the `large-v2` whisper model.
