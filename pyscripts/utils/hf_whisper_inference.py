@@ -25,14 +25,20 @@ LANGS = {
 }
 
 
-def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, task="transcribe"):
+def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrained_model=None, task="transcribe"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # Load model and processor
-    processor = WhisperProcessor.from_pretrained(
-        f"openai/whisper-{model_name}")
-    model = WhisperForConditionalGeneration.from_pretrained(
-        f"openai/whisper-{model_name}").to(device)
+    if pretrained_model is not None:
+        print(f"Loading model from {pretrained_model}")
+        processor = WhisperProcessor.from_pretrained(pretrained_model)
+        model = WhisperForConditionalGeneration.from_pretrained(
+            pretrained_model).to(device)
+    else:
+        processor = WhisperProcessor.from_pretrained(
+            f"openai/whisper-{model_name}")
+        model = WhisperForConditionalGeneration.from_pretrained(
+            f"openai/whisper-{model_name}").to(device)
     forced_decoder_ids = processor.get_decoder_prompt_ids(
         language=src_lang, task=task)
     print(f"model.device: {model.device}")
@@ -88,11 +94,13 @@ def main():
     parser.add_argument("--task", type=str, default="transcribe",
                         choices=["transcribe", "translate"],
                         help="Task to perform")
+    parser.add_argument("--pretrained-model", type=Path, default=None,
+                        help="Path to the pretrained (finetuned) model, if not specified, the model will be loaded from HuggingFace")
     parser.add_argument("--model_name", type=str, default="tiny")
 
     args = parser.parse_args()
     inference(keyfile=args.keyfile, dset=args.dset, src_lang=LANGS[args.src_lang], tgt_lang=LANGS[
-              args.tgt_lang], output_dir=args.output_dir, model_name=args.model_name, task=args.task)
+              args.tgt_lang], output_dir=args.output_dir, model_name=args.model_name, task=args.task, pretrained_model=args.pretrained_model)
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ Please let me (Cihan) know if there is anything missing or there is any bug/erro
 | Korean (uhara) |  59.1 | - | 15.6 |
 | Chinese (bbn_cts_bolt) | 34.4 | - | 5.1 |
 | Spanish (fisher \| callhome) | 32.7 | - \| - | 15.3 |
-| Russian (uhara) | 35.8 | - | - |
+| Russian (uhara) | 35.8 | - | 6.6 |
 
 ### ST Results (BLEU)
 | Language | dev | test | fleurs.test |
@@ -48,7 +48,7 @@ Please let me (Cihan) know if there is anything missing or there is any bug/erro
 | Korean (uhara) | 11.7 | - | 20.7 |
 | Chinese (bbn_cts_bolt) |  9.7 | - | 17.4 |
 | Spanish (fisher \| callhome) | 30.6 | - \| - | 23.4 |
-| Russian (uhara) | 20.2 | - | - |
+| Russian (uhara) | 20.2 | - | 28.2 |
 
 # Results (OpenAI)
 The results below are evaluated based on the `large-v2` whisper model.

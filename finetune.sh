@@ -26,28 +26,31 @@ SECONDS=0
 sclite_path=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
 
 # General configuration
-bpe_predefined=false
-src_inference_lm=
 datadir=
 token_listdir=
-stage=1               # Processes starts from the specified stage.
-stop_stage=10000      # Processes is stopped at the specified stage.
-skip_data_prep=false  # Skip data preparation stages.
-skip_train=false      # Skip training stages.
-skip_eval=false       # Skip decoding and evaluation stages.
-skip_upload=true      # Skip packing and uploading stages.
-skip_upload_hf=true   # Skip uploading to hugging face stages.
-ngpu=1                # The number of gpus ("0" uses cpu, otherwise use gpu).
-num_nodes=1           # The number of nodes.
-nj=32                 # The number of parallel jobs.
-inference_nj=32       # The number of parallel jobs in decoding.
-gpu_inference=false   # Whether to perform gpu decoding.
-dumpdir=dump          # Directory to dump features.
-expdir=exp            # Directory to save experiments.
-python=python3        # Specify python to execute espnet commands.
-model_name=base       # Model name, e.g. "base", "large", etc.
-framework=huggingface # huggingface, openai
-hf_datadir=           # Directory to the hugging face dataset.
+stage=1                  # Processes starts from the specified stage.
+stop_stage=10000         # Processes is stopped at the specified stage.
+skip_data_prep=false     # Skip data preparation stages.
+skip_train=false         # Skip training stages.
+skip_eval=false          # Skip decoding and evaluation stages.
+skip_upload=true         # Skip packing and uploading stages.
+skip_upload_hf=true      # Skip uploading to hugging face stages.
+ngpu=1                   # The number of gpus ("0" uses cpu, otherwise use gpu).
+num_nodes=1              # The number of nodes.
+nj=32                    # The number of parallel jobs.
+inference_nj=32          # The number of parallel jobs in decoding.
+gpu_inference=false      # Whether to perform gpu decoding.
+dumpdir=dump             # Directory to dump features.
+expdir=exp               # Directory to save experiments.
+python=python3           # Specify python to execute espnet commands.
+model_name=base          # Model name, e.g. "base", "large", etc.
+framework=huggingface    # huggingface, openai
+hf_datadir=              # Directory to the hugging face dataset.
+mode=asr                 # asr, st, mtl
+preprocessing_num_proc=8 # Number of parallel jobs in preprocessing
+resume_from_checkpoint=  # Resume from checkpoint path
+load_model_from_path=    # Load model from path
+peft_method=none         # none, lora, qlora
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -88,22 +91,18 @@ hugging_face_model_name_or_path=""    # Hugging Face model or path for hugging_f
 use_ngram=false
 ngram_exp=
 ngram_num=3
-use_src_ngram=false
 
 # Language model related
-use_lm=false     # Use language model for ST decoding.
-use_src_lm=false # Use language model for ASR multi-decoder decoding.
-lm_tag=          # Suffix to the result dir for language model training.
-lm_exp=          # Specify the directory path for LM experiment.
+use_lm=false # Use language model for ST decoding.
+lm_tag=      # Suffix to the result dir for language model training.
+lm_exp=      # Specify the directory path for LM experiment.
 # If this option is specified, lm_tag is ignored.
-src_lm_exp=   # Specify the directory path for LM experiment.
 lm_stats_dir= # Specify the directory path for LM statistics.
 lm_config=    # Config for language model training.
 lm_args=      # Arguments for language model training, e.g., "--max_epoch 10".
 # Note that it will overwrite args in lm config.
-use_word_lm=false     # Whether to use word language model.
-use_src_word_lm=false # Whether to use word language model.
-num_splits_lm=1       # Number of splitting for lm corpus.
+use_word_lm=false # Whether to use word language model.
+num_splits_lm=1   # Number of splitting for lm corpus.
 # shellcheck disable=SC2034
 word_vocab_size=10000 # Size of word vocabulary.
 
@@ -127,15 +126,12 @@ use_src_lang=true          # Incorporate ASR loss (use src texts) or not
 hf_repo=
 
 # Decoding related
-use_k2=false        # Whether to use k2 based decoder
-use_streaming=false # Whether to use streaming decoding
-batch_size=1
+use_k2=false      # Whether to use k2 based decoder
 inference_tag=    # Suffix to the result dir for decoding.
 inference_config= # Config for decoding.
 inference_args=   # Arguments for decoding, e.g., "--lm_weight 0.1".
 # Note that it will overwrite args in inference config.
-inference_lm=valid.loss.ave.pth     # Language model path for decoding.
-inference_asr_lm=valid.loss.ave.pth # Language model path for decoding.
+inference_lm=valid.loss.ave.pth # Language model path for decoding.
 inference_ngram=${ngram_num}gram.bin
 # inference_st_model=valid.acc.ave.pth # ST model path for decoding.
 # e.g.
@@ -157,8 +153,6 @@ lm_test_text=             # Text file path of language model evaluation set.
 nlsyms_txt=none           # Non-linguistic symbol list if existing.
 cleaner=none              # Text cleaner.
 g2p=none                  # g2p method (needed if token_type=phn).
-score_opts=               # The options given to sclite scoring
-local_score_opts=         # The options given to local/score.sh.
 st_speech_fold_length=800 # fold_length for speech data during ST training.
 st_text_fold_length=150   # fold_length for text data during ST training.
 lm_fold_length=150        # fold_length for LM training.
@@ -372,10 +366,7 @@ if "${token_joint}"; then
     src_bpetoken_list="${tgt_bpetoken_list}"
     src_chartoken_list="${tgt_chartoken_list}"
 else
-    #src_bpedir="${token_listdir}/src_bpe_${src_bpemode}${src_nbpe}"
     src_bpedir=/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/alt-arabic/speech/amir/competitions/IWSLT/MGB2_8KHz2/data/token_list/bpe_unigram2000
-    # src_bpedir=/alt-arabic/speech/amir/competitions/IWSLT/MGB2_8KHz2/data/token_list/bpe_unigram2000
-    #src_bpeprefix="${src_bpedir}"/bpe
     src_bpeprefix=/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/alt-arabic/speech/amir/competitions/IWSLT/MGB2_8KHz2/data/token_list/bpe_unigram2000/bpe
     src_bpemodel="${src_bpeprefix}".model
     src_bpetoken_list="${src_bpedir}"/tokens.txt
@@ -486,9 +477,9 @@ fi
 # The directory used for training commands
 if [ -z "${st_exp}" ]; then
     if [ "${framework}" = "huggingface" ]; then
-        st_exp="${expdir}/st_hf_${st_tag}"
+        st_exp="${expdir}/hf_${st_tag}"
     else
-        st_exp="${expdir}/st_${st_tag}"
+        st_exp="${expdir}/${st_tag}"
     fi
 fi
 if [ -z "${lm_exp}" ]; then
@@ -791,7 +782,56 @@ else
 fi
 
 if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
-    log "Stage 6: Run (distributed) ASR inference on the dev/test data."
+    log "Stage 6: Run finetuning on the training data"
+    _dir="${st_exp}/${src_lang}/${mode}"
+    _logdir="${_dir}/logdir"
+    mkdir -p "${_logdir}"
+
+    # 2. Submit jobs
+    JOBID=$(date +'%Y%m%d%H%M%S')
+    log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
+
+    opts=
+    if [ "${framework}" == "huggingface" ]; then
+        opts+=" --hf_datadir ${hf_datadir} "
+        opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
+        opts+=" --save_feature_dir ${hf_datadir}/features "
+
+        if [ "${peft_method}" != none ]; then
+            opts+=" --peft_method ${peft_method} "
+        fi
+
+        train_tool="pyscripts/utils/hf_whisper_ft.py"
+    else
+        log "Error: not supported --framework ${framework}"
+        exit 2
+    fi
+    if [ -n "${resume_from_checkpoint}" ]; then
+        opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
+    fi
+
+    # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+    #       but it's used only for deciding the sample ids.
+    # shellcheck disable=SC2046,SC2086
+    ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} \
+        ${train_tool} \
+        --train-set ${train_set}_sp \
+        --src-lang ${src_lang} \
+        --tgt-lang ${tgt_lang} \
+        --output_dir ${_dir} \
+        --model_name ${model_name} ${opts}
+
+#    ${train_tool} \
+#         --train-set ${train_set}_sp \
+#         --src-lang ${src_lang} \
+#         --tgt-lang ${tgt_lang} \
+#         --output_dir ${_dir} \
+#         --model_name ${model_name} ${opts}
+fi
+
+if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+    log "Stage 7: Run (distributed) ASR inference on the dev/test data."
     for dset in ${valid_set} ${test_sets}; do
     # for dset in ${valid_set}; do
     # for dset in ${test_sets}; do
@@ -802,6 +842,7 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         fi
         _dsetdir=${data_feats}${_suf}/${dset}
         _dir="${st_exp}/${src_lang}/${dset}"
+        _modeldir="${st_exp}/${src_lang}/${mode}"
         _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
         mkdir -p "${_logdir}"
 
@@ -823,6 +864,11 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         if [ "${framework}" == "huggingface" ]; then
             _hf_dset="${hf_datadir}/${src_lang}.${dset}"
             opts+=" --dset ${_hf_dset} "
+
+            if [ "${peft_method}" != none ]; then
+                opts+=" --peft_method ${peft_method} "
+            fi
+
             inference_tool="pyscripts/utils/hf_whisper_inference.py"
         else
             inference_tool="pyscripts/utils/whisper_inference.py"
@@ -837,6 +883,7 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
             --src-lang ${src_lang} \
             --tgt-lang ${tgt_lang} \
             --output_dir ${_logdir}/output.JOB \
+            --pretrained-model ${_modeldir} \
             --model_name ${model_name} ${opts}
 
         # 3. Concatenates the output files from each jobs
@@ -847,8 +894,8 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
     done
 fi
 
-if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    log "Stage 7: Run evaluation on the ASR decoded data."
+if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
+    log "Stage 8: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
     for dset in ${valid_set} ${test_sets}; do
@@ -873,101 +920,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             --sclite ${sclite_path} \
             --model_tag ${model_name} \
             --dset "${_dset}" \
-            --framework "${framework}" ${opts}
-        cd -
-    done
-fi
-
-if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
-    log "Stage 8: Run (distributed) ST inference on the dev/test data."
-    # for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
-        for dset in ${test_sets}; do
-        if [ "${dset}" = "${valid_set}" ]; then
-            _suf="/org"
-        else
-            _suf=""
-        fi
-        _dsetdir=${data_feats}${_suf}/${dset}
-        _dir="${st_exp}/${src_lang}/${dset}"
-        _logdir="${st_exp}/logdir/inference_st/${src_lang}/${dset}"
-        mkdir -p "${_logdir}"
-
-        # 1. Split the key file
-        _nj=$(min "${inference_nj}" "$(wc <${_dsetdir}/wav_raw.scp -l)")
-
-        key_file=${_dsetdir}/wav_raw.scp
-        split_scps=""
-        for n in $(seq "${_nj}"); do
-            split_scps+=" ${_logdir}/decode.${n}.scp"
-        done
-        # shellcheck disable=SC2086
-        utils/split_scp.pl "${key_file}" ${split_scps}
-
-        # 2. Submit jobs
-        log "Inference started... log: '${_logdir}/decode.*.log'"
-
-        opts=
-        if [ "${framework}" == "huggingface" ]; then
-            _hf_dset="${hf_datadir}/${src_lang}.${dset}"
-            opts+=" --dset ${_hf_dset} "
-            inference_tool="pyscripts/utils/hf_whisper_inference.py"
-        else
-            inference_tool="pyscripts/utils/whisper_inference.py"
-        fi
-
-        # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-        #       but it's used only for deciding the sample ids.
-        # shellcheck disable=SC2046,SC2086
-        ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
-            ${inference_tool} \
-            --keyfile ${_logdir}/decode.JOB.scp \
-            --src-lang ${src_lang} \
-            --tgt-lang ${tgt_lang} \
-            --output_dir ${_logdir}/output.JOB \
-            --model_name ${model_name} \
-            --task "translate" ${opts}
-
-        # 3. Concatenates the output files from each jobs
-        mkdir -p "${_dir}"
-        for i in $(seq "${_nj}"); do
-            cat "${_logdir}/output.${i}/text"
-        done | LC_ALL=C sort -k1 >"${_dir}/st.text"
-    done
-fi
-
-if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
-    log "Stage 9: Run evaluation on the ST decoded data."
-
-    # Note that we assume the evaluation code is available in the path
-    # for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
-        for dset in ${test_sets}; do
-        log "Running evaluation on ${dset}"
-
-        if [ "${dset}" = "${valid_set}" ]; then
-            eval_script=run-devset-eval.sh
-        elif [ "${dset}" = "fleurs_test" ]; then
-            eval_script=run-ood-eval.sh
-        else
-            eval_script=run-testset-eval.sh
-        fi
-
-        opts=
-        if [ "${src_lang}" == "ara" ]; then
-            opts+=" --arabic true "
-        fi
-
-        _dir="${st_exp}/${src_lang}/${dset}"
-        _dset=$(echo "${dset}" | sed 's/_test$//')
-        st_hyp_file="${PWD}/${_dir}/st.text"
-        cd evaluation
-        $eval_script \
-            --src_lang ${src_lang} \
-            --hyp_mt ${st_hyp_file} \
-            --model_tag ${model_name} \
-            --score_dir scores \
-            --dset "${_dset}" \
+            --score_dir scores_ft/${model_name} \
             --framework "${framework}" ${opts}
         cd -
     done

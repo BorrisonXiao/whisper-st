@@ -14,6 +14,7 @@ src_lang=kor
 # src_lang=cmn
 # src_lang=spa
 # src_lang=rus
+# src_lang=all
 tgt_lang=eng
 
 train_set=train-cts
@@ -31,18 +32,22 @@ testset_dict+=(
 # test_set=${testset_dict[${src_lang}]} # This option is to run eval
 test_set="fleurs_test"
 
-#st_config=conf/train_st.yaml
-st_config=conf/train_st_baseline.yaml
-inference_config=conf/decode_st.yaml
-
 framework=huggingface # huggingface, openai
+inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
+mode=asr # asr, st, mtl
 # framework=openai # huggingface, openai
-# model=large-v2 # base, large, large-v2 etc.
-model=base # base, large, large-v2 etc.
-inference_nj=8 # Number of jobs for decoding, note that each job will use a GPU
+model=large-v2 # base, large, large-v2 etc.
+# model=base # base, large, large-v2 etc.
+# model=medium # base, large, large-v2 etc.
+resume_from_checkpoint=
+# resume_from_checkpoint=ft_exp/hf_whisper_base/kor/asr/checkpoint-3600
+peft_method=lora # none, lora, qlora
+# peft_method=none # none, lora, qlora
 
-src_nbpe=2000
-tgt_nbpe=2000
+opts=
+if [ -n "${resume_from_checkpoint}" ]; then
+    opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
+fi
 
 src_case=tc #lc.rm
 tgt_case=tc #lc.rm
@@ -55,8 +60,8 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 datadir=data/${src_lang}
-hf_datadir=/expscratch/dchakraborty/hf_datasets/scale23/data/all
-# hf_datadir=/exp/cxiao/scale23/hf_data
+# hf_datadir=/expscratch/dchakraborty/hf_datasets/scale23/data/all
+hf_datadir=/exp/cxiao/scale23/hf_data
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
 local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -78,8 +83,9 @@ local_data_opts+=$src_lang
 local_data_opts+=' --datadir '
 local_data_opts+=$datadir
 
-./decode.sh \
-    --use_streaming false \
+./finetune.sh \
+    --ngpu 4 \
+    --expdir ft_exp \
     --local_data_opts "$local_data_opts" \
     --audio_format "flac.ark" \
     --use_lm false \
@@ -89,15 +95,11 @@ local_data_opts+=$datadir
     --src_lang ${src_lang} \
     --tgt_lang ${tgt_lang} \
     --src_token_type "bpe" \
-    --src_nbpe $src_nbpe \
     --tgt_token_type "bpe" \
-    --tgt_nbpe $tgt_nbpe \
     --src_case ${src_case} \
     --tgt_case ${tgt_case} \
     --feats_type raw \
     --speed_perturb_factors "0.9 1.0 1.1" \
-    --st_config "${st_config}" \
-    --inference_config "${inference_config}" \
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
     --test_sets "${test_set}" \
@@ -105,12 +107,15 @@ local_data_opts+=$datadir
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
     --stage 6 \
-    --stop_stage 7 \
+    --stop_stage 6 \
     --datadir ${datadir} \
     --dumpdir "dump/${src_lang}" \
     --save_wav true \
     --st_tag whisper_${model} \
     --model_name ${model} \
+    --mode ${mode} \
     --inference_nj ${inference_nj} \
     --framework ${framework} \
-    --hf_datadir ${hf_datadir}
+    --hf_datadir ${hf_datadir} \
+    --peft_method ${peft_method} \
+    --skip_data_prep true ${opts}

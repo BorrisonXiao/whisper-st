@@ -1,6 +1,7 @@
 exp
+*_exp
 data
 dump
 evaluation/scores
 random
-evaluation/scores_old
+evaluation/scores_*

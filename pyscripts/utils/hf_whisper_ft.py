@@ -1,0 +1,313 @@
+#!/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
+# Note that the hard-coded path above is specific to the HLT cluster due to ESPNet environment setup.
+# Copyright 2023 Johns Hopkins University (Cihan Xiao)
+# -*- coding: utf-8 -*-
+
+from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, Seq2SeqTrainer
+import argparse
+from pathlib import Path
+from peft import get_peft_model, LoraConfig
+import torch
+from datasets import load_from_disk, concatenate_datasets
+from transformers.models.whisper.english_normalizer import BasicTextNormalizer, EnglishTextNormalizer
+from dataclasses import dataclass
+from typing import Any, Dict, List, Union
+import evaluate
+
+LANGS = {
+    "ara": "arabic",
+    "kor": "korean",
+    "cmn": "chinese",
+    "spa": "spanish",
+    "rus": "russian",
+    "eng": "english",
+}
+
+
+def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr"):
+    src_langs = [src_lang] if src_lang != "all" else list(LANGS.keys())
+    if src_lang == "all":
+        # For multilingual training, we need to load all the datasets
+        raise NotImplementedError
+    train_dset_dict = {}
+    val_dset_dict = {}
+    for lang in src_langs:
+        if mode == "mtl":
+            # For multi-task learning, the dataset will be duplicated and concatenated
+            # with the other task's dataset. Note that all both the transcript and
+            # translation will be named as "text" in the returned dataset.
+            raise NotImplementedError
+        elif mode == "asr":
+            # For ASR, we only need the transcript
+            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            val_dset = load_from_disk(hf_datadir / f"{lang}.dev")
+            # Rename the "transcript" column to "text"
+            train_dset = train_dset.rename_column("transcript", "text")
+            val_dset = val_dset.rename_column("transcript", "text")
+            # Remove the "translation" column
+            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                                                   "audio", "text", "src_lang", "tgt_lang"]])
+            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                                               "audio", "text", "src_lang", "tgt_lang"]])
+            # TODO: For ASR, it might be better to convert tgt_lang to src_lang.
+            # Not doing this for now due to permission issues.
+            # train_dset = train_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
+            # val_dset = val_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
+            train_dset_dict[f"{src_lang}_{mode}"] = train_dset
+            val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+        elif mode == "st":
+            # For ST, we need only the  translation
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+
+    return train_dset_dict, val_dset_dict
+
+
+def prepare_dataset(dset_dict, model_name, local_rank, preprocessing_num_proc=4, normalize_text=True, save_feature_dir=None, dset_type="train"):
+    processed_dset_list = []
+    for _lang, dset in dset_dict.items():
+        lang, mode = _lang.split("_")
+        # If the features are already extracted, load them directly
+        if save_feature_dir is not None and (save_feature_dir / f"{lang}.{dset_type}.{mode}").exists():
+            processed_dset = load_from_disk(
+                save_feature_dir / f"{lang}.{dset_type}.{mode}")
+            processed_dset_list.append(processed_dset)
+        else:
+            if mode == "asr":
+                std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer()
+            else:
+                std = EnglishTextNormalizer()
+            processor = WhisperProcessor.from_pretrained(
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="transcribe" if mode == "asr" else "translate")
+
+            def _prepare_dataset(batch):
+                audio = batch["audio"]
+                batch["input_features"] = processor.feature_extractor(
+                    audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+                batch["input_length"] = len(
+                    audio["array"]) / audio["sampling_rate"]
+                text = std(batch["text"]).strip(
+                ) if normalize_text else batch["text"]
+                batch["labels"] = processor.tokenizer(text).input_ids
+                return batch
+
+            processed_dset = dset.map(_prepare_dataset,
+                                      num_proc=preprocessing_num_proc,
+                                      desc="Preprocessing dataset")
+            if local_rank in [-1, 0] and save_feature_dir is not None:
+                processed_dset.save_to_disk(
+                    save_feature_dir / f"{lang}.{dset_type}.{mode}")
+            processed_dset_list.append(processed_dset)
+
+    # Concatenate all the datasets
+    return concatenate_datasets(processed_dset_list)
+
+
+@dataclass
+class DataCollatorSpeechSeq2SeqWithPadding:
+    """
+    This portion of code is adapted from:
+    https://medium.com/@bofenghuang7/what-i-learned-from-whisper-fine-tuning-event-2a68dab1862
+    """
+    processor: Any
+
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        input_features = [{"input_features": feature["input_features"]}
+                            for feature in features]
+        # Convert to tensors
+        batch = self.processor.feature_extractor.pad(
+            input_features, return_tensors="pt")
+
+        label_features = [{"input_ids": feature["labels"]}
+                          for feature in features]
+        # Pad label ids to the max length in the batch
+        labels_batch = self.processor.tokenizer.pad(
+            label_features, return_tensors="pt")
+
+        # Replace padding with -100 to ignore loss correctly
+        labels = labels_batch["input_ids"].masked_fill(
+            labels_batch.attention_mask.ne(1), -100)
+
+        # If bos token is appended in previous tokenization step,
+        # cut bos token here as it's append later anyways
+        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+            labels = labels[:, 1:]
+
+        batch["labels"] = labels
+
+        return batch
+
+
+def finetune(train_set, hf_datadir, src_lang, tgt_lang, output_dir, model_name, local_rank, mode="asr", preprocessing_num_proc=4, normalize_text=True, save_feature_dir=None, load_model_from_path=None, resume_from_checkpoint=None, peft_method=None):
+    # Step 1: Load the training set
+    train_dset_dict, val_dset_dict = load_train_and_dev_sets(
+        hf_datadir, train_set, src_lang, tgt_lang, mode=mode)
+
+    # Step 2: Data augmentation
+
+    # Step 3: Feature extraction
+    _train_dset = prepare_dataset(dset_dict=train_dset_dict,
+                                  model_name=model_name,
+                                  preprocessing_num_proc=preprocessing_num_proc,
+                                  normalize_text=normalize_text,
+                                  save_feature_dir=save_feature_dir,
+                                  dset_type="train",
+                                  local_rank=local_rank)
+    _val_dset = prepare_dataset(dset_dict=val_dset_dict, model_name=model_name, preprocessing_num_proc=preprocessing_num_proc,
+                                normalize_text=normalize_text, save_feature_dir=save_feature_dir, dset_type="dev", local_rank=local_rank)
+
+    # Step 4: Define the data collator
+    processor = WhisperProcessor.from_pretrained(
+        f"openai/whisper-{model_name}")
+    data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+
+    # Step 5: Define the metric
+    metric = evaluate.load("wer")
+
+    def compute_metrics(pred, normalize_eval=True):
+        pred_ids = pred.predictions
+        label_ids = pred.label_ids
+
+        # replace -100 with the pad_token_id
+        label_ids[label_ids == -100] = processor.tokenizer.pad_token_id
+
+        # we do not want to group tokens when computing the metrics
+        pred_str = processor.tokenizer.batch_decode(
+            pred_ids, skip_special_tokens=True)
+        label_str = processor.tokenizer.batch_decode(
+            label_ids, skip_special_tokens=True)
+
+        if normalize_eval:
+            std = BasicTextNormalizer()
+            pred_str = [std(pred) for pred in pred_str]
+            label_str = [std(label) for label in label_str]
+            # Filtering step to only evaluate the samples that correspond to non-zero references
+            pred_str = [pred_str[i]
+                        for i in range(len(pred_str)) if len(label_str[i]) > 0]
+            label_str = [label_str[i]
+                         for i in range(len(label_str)) if len(label_str[i]) > 0]
+
+        wer = metric.compute(predictions=pred_str, references=label_str)
+
+        return {"wer": wer}
+
+    # Step 6: Define the training arguments
+    training_args = Seq2SeqTrainingArguments(
+        output_dir=output_dir,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=64,
+        gradient_accumulation_steps=1,
+        warmup_steps=800,
+        max_steps=2400,
+        learning_rate=1e-5,
+        weight_decay=0.01,
+        fp16=True,
+        predict_with_generate=True,
+        generation_max_length=225,
+        logging_steps=30,
+        report_to=["tensorboard"],
+        evaluation_strategy="steps",
+        eval_steps=300,
+        save_strategy="steps",
+        save_steps=300,
+        load_best_model_at_end=True,
+        metric_for_best_model="wer",
+        greater_is_better=False,
+        local_rank=local_rank,
+        remove_unused_columns=False,  # This is important for PEFT
+    )
+
+    # Step 7: Load the model and trainer
+    if load_model_from_path:
+        model = WhisperForConditionalGeneration.from_pretrained(
+            load_model_from_path)
+    else:
+        model = WhisperForConditionalGeneration.from_pretrained(
+            f"openai/whisper-{model_name}")
+
+    if resume_from_checkpoint:
+        print(f"Resuming from checkpoint: {resume_from_checkpoint}")
+        model = model.from_pretrained(resume_from_checkpoint)
+
+    if peft_method:
+        if peft_method == "lora":
+            peft_config = LoraConfig(
+                inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1,
+                target_modules=".*decoder.*(self_attn|encoder_attn).*(q_proj|v_proj)$"
+            )
+            model = get_peft_model(model, peft_config)
+            model.print_trainable_parameters()
+            output_dir = output_dir / "lora"
+            training_args.output_dir = str(output_dir)
+        elif peft_method == "qlora":
+            raise NotImplementedError
+        else:
+            raise ValueError(f"Unknown PEFT method: {peft_method}")
+
+    trainer = Seq2SeqTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=_train_dset,
+        eval_dataset=_val_dset,
+        tokenizer=processor,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+    )
+
+    # Step 8: Launch training
+    if resume_from_checkpoint:
+        trainer.train(resume_from_checkpoint)
+    else:
+        trainer.train()
+
+    # Step 9: Save the model
+    model.save_pretrained(training_args.output_dir)
+    processor.save_pretrained(training_args.output_dir)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--train-set", type=str,
+                        default="train-cts_sp",
+                        help="Name of the training set")
+    parser.add_argument("--hf_datadir", type=Path,
+                        default="/expscratch/dchakraborty/hf_datasets/scale23/data/all",
+                        help="Path to the HF datasets")
+    parser.add_argument("--src-lang", type=str, default="cmn",
+                        help="Source language")
+    parser.add_argument("--tgt-lang", type=str, default="eng",
+                        help="Target language")
+    parser.add_argument("--output_dir", type=Path,
+                        default="ft_exp/hf_whisper_tiny/cmn/asr/",
+                        help="Path to the output directory")
+    parser.add_argument("--mode", type=str, default="asr",
+                        choices=["asr", "st", "mtl"],
+                        help="Task to perform")
+    parser.add_argument("--preprocessing_num_proc", type=int, default=4,
+                        help="Number of processes to use for preprocessing")
+    parser.add_argument("--normalize_text", action="store_true",
+                        help="Whether to normalize the text")
+    parser.add_argument("--save_feature_dir", type=Path,
+                        default="/exp/cxiao/scale23/hf_data/features",
+                        help="Path to the directory to save the extracted features, if None, the features will not be saved")
+    parser.add_argument("--local-rank", type=int, default=-1,
+                        help="Local rank for distributed training (-1: not distributed)")
+    parser.add_argument("--load_model_from_path", type=Path, default=None,
+                        help="Path to the model to load")
+    parser.add_argument("--resume_from_checkpoint", type=Path, default=None,
+                        help="Path to the checkpoint to resume from, note that this overrides the load_model_from_path option")
+    parser.add_argument("--peft_method", type=str, default=None,
+                        choices=["lora", "qlora"],
+                        help="Which PEFT method to use")
+    parser.add_argument("--model_name", type=str, default="tiny")
+
+    args = parser.parse_args()
+    finetune(train_set=args.train_set, hf_datadir=args.hf_datadir, src_lang=args.src_lang, tgt_lang=args.tgt_lang,
+             output_dir=args.output_dir, model_name=args.model_name, mode=args.mode, preprocessing_num_proc=args.preprocessing_num_proc,
+             save_feature_dir=args.save_feature_dir, local_rank=args.local_rank, normalize_text=args.normalize_text, load_model_from_path=args.load_model_from_path,
+             resume_from_checkpoint=args.resume_from_checkpoint, peft_method=args.peft_method)
+
+
+if __name__ == "__main__":
+    main()
