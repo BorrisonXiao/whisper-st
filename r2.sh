@@ -39,7 +39,6 @@ else
     fi
     resume_from_checkpoint=
 fi
-# ds_config=conf/tuning/ds3.json
 save_eval_preds=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_${model}/${src_lang}/${mode}/${peft_method}/logdir/eval_preds.txt
 
 if [ -n "${resume_from_checkpoint}" ]; then
