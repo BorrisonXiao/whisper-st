@@ -862,8 +862,8 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
         #       but it's used only for deciding the sample ids.
         # shellcheck disable=SC2046,SC2086
-        ${cuda_cmd} --hostname 'r9n01' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
         # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        ${cuda_cmd} --hostname 'r9n01' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
             ${train_tool} \
             --train-set ${train_set}_sp \
