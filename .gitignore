@@ -5,3 +5,4 @@ dump
 evaluation/scores
 random
 evaluation/scores_*
+pyscripts/utils/__pycache__

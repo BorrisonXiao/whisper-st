@@ -14,6 +14,7 @@ from pathlib import Path
 from tqdm import tqdm
 import torch
 from datasets import load_from_disk
+from peft import PeftModel, PeftConfig
 
 LANGS = {
     "ara": "arabic",
@@ -25,7 +26,7 @@ LANGS = {
 }
 
 
-def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrained_model=None, task="transcribe"):
+def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrained_model=None, peft_model=None, task="transcribe"):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # Load model and processor
@@ -39,6 +40,14 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
             f"openai/whisper-{model_name}")
         model = WhisperForConditionalGeneration.from_pretrained(
             f"openai/whisper-{model_name}").to(device)
+
+    # TODO: Handle the PEFT model
+    if peft_model is not None:
+        raise NotImplementedError
+        peft_config = PeftConfig.from_pretrained(peft_model)
+        model = WhisperForConditionalGeneration.from_pretrained(peft_config.base_model_name_or_path).to(device)
+        model = PeftModel.from_pretrained(model, peft_model)
+
     forced_decoder_ids = processor.get_decoder_prompt_ids(
         language=src_lang, task=task)
     print(f"model.device: {model.device}")
@@ -96,11 +105,14 @@ def main():
                         help="Task to perform")
     parser.add_argument("--pretrained-model", type=Path, default=None,
                         help="Path to the pretrained (finetuned) model, if not specified, the model will be loaded from HuggingFace")
+    parser.add_argument("--peft-model", type=Path, default=None,
+                        help="Path to the PEFT model, note that this will override the pretrained model")
     parser.add_argument("--model_name", type=str, default="tiny")
 
     args = parser.parse_args()
     inference(keyfile=args.keyfile, dset=args.dset, src_lang=LANGS[args.src_lang], tgt_lang=LANGS[
-              args.tgt_lang], output_dir=args.output_dir, model_name=args.model_name, task=args.task, pretrained_model=args.pretrained_model)
+              args.tgt_lang], output_dir=args.output_dir, model_name=args.model_name, task=args.task, pretrained_model=args.pretrained_model
+              peft_model=args.peft_model)
 
 
 if __name__ == "__main__":

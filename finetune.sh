@@ -47,10 +47,17 @@ model_name=base          # Model name, e.g. "base", "large", etc.
 framework=huggingface    # huggingface, openai
 hf_datadir=              # Directory to the hugging face dataset.
 mode=asr                 # asr, st, mtl
-preprocessing_num_proc=8 # Number of parallel jobs in preprocessing
+preprocessing_num_proc=4 # Number of parallel jobs in preprocessing
 resume_from_checkpoint=  # Resume from checkpoint path
 load_model_from_path=    # Load model from path
 peft_method=none         # none, lora, qlora
+on_the_fly_feat=false    # Whether to generate features on the fly
+debug=false              # Whether to use debug mode
+dev_name=dev             # Name of the dev set, e.g. dev, dev1, dev2
+precompute_feats=true    # Whether to precompute features (useful for multi-gpu training)
+ds_config=               # Path to the deepspeed config file
+save_eval_preds=         # Path to store the evaluation predictions for analysis
+master_port=29500        # Port for distributed training
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -783,7 +790,7 @@ fi
 
 if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
     log "Stage 6: Run finetuning on the training data"
-    _dir="${st_exp}/${src_lang}/${mode}"
+    _dir="${st_exp}/${src_lang}/${mode}/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
@@ -795,11 +802,23 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
     if [ "${framework}" == "huggingface" ]; then
         opts+=" --hf_datadir ${hf_datadir} "
         opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
-        opts+=" --save_feature_dir ${hf_datadir}/features "
+        opts+=" --dev-name ${dev_name} "
+
+        if [ -n "${st_config}" ]; then
+            opts+=" --config ${st_config} "
+        fi
 
         if [ "${peft_method}" != none ]; then
             opts+=" --peft_method ${peft_method} "
         fi
+
+        _feat_type=feats
+        if "${on_the_fly_feat}"; then
+            opts+=" --on-the-fly-feat-extraction "
+            _feat_type=raw
+        fi
+
+        opts+=" --save_feature_dir ${hf_datadir}/features/${_feat_type} "
 
         train_tool="pyscripts/utils/hf_whisper_ft.py"
     else
@@ -809,32 +828,58 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
     if [ -n "${resume_from_checkpoint}" ]; then
         opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
     fi
+    if [ -n "${ds_config}" ]; then
+        opts+=" --deepspeed ${ds_config} "
+    fi
+    if [ -n "${save_eval_preds}" ]; then
+        opts+=" --save-eval-preds ${save_eval_preds} "
+    fi
 
-    # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-    #       but it's used only for deciding the sample ids.
-    # shellcheck disable=SC2046,SC2086
-    ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-        /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} \
+    if "${precompute_feats}"; then
+        # If the feature is already extracted in previous runs, skip this step
+        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.dev.${mode}" ] &&
+            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.train.${mode}" ]; then
+            ${train_tool} \
+                --feat-extraction \
+                --train-set ${train_set}_sp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --model_name ${model_name} ${opts}
+        else
+            log "Skip feature extraction as the features are already extracted"
+        fi
+    fi
+
+    if "${debug}"; then
         ${train_tool} \
-        --train-set ${train_set}_sp \
-        --src-lang ${src_lang} \
-        --tgt-lang ${tgt_lang} \
-        --output_dir ${_dir} \
-        --model_name ${model_name} ${opts}
+            --train-set ${train_set}_sp \
+            --src-lang ${src_lang} \
+            --tgt-lang ${tgt_lang} \
+            --output_dir ${_dir} \
+            --model_name ${model_name} ${opts}
+    else
+        # For some reason the node r9n01 is much faster than the other nodes
+        # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+        #       but it's used only for deciding the sample ids.
+        # shellcheck disable=SC2046,SC2086
+        ${cuda_cmd} --hostname 'r9n01' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
+            ${train_tool} \
+            --train-set ${train_set}_sp \
+            --src-lang ${src_lang} \
+            --tgt-lang ${tgt_lang} \
+            --output_dir ${_dir} \
+            --model_name ${model_name} ${opts}
+    fi
 
-#    ${train_tool} \
-#         --train-set ${train_set}_sp \
-#         --src-lang ${src_lang} \
-#         --tgt-lang ${tgt_lang} \
-#         --output_dir ${_dir} \
-#         --model_name ${model_name} ${opts}
 fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     log "Stage 7: Run (distributed) ASR inference on the dev/test data."
     for dset in ${valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
-    # for dset in ${test_sets}; do
+        # for dset in ${valid_set}; do
+        # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
         else
