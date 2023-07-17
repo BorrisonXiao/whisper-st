@@ -9,21 +9,21 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-src_lang=kor
+# src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
-# train_set=train-cts
-train_set=train-all
+train_set=train-cts
+# train_set=train-all
 train_dev=dev1
-# debug=true
-debug=false
+debug=true
 ds_config=conf/tuning/ds2.json
-merge_utt=true
+# merge_utt=true
+merge_utt=false
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
 
@@ -65,8 +65,8 @@ test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
 
 framework=huggingface # huggingface, openai
-inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
-mode=asr # asr, st, mtl
+inference_nj=4        # Number of jobs for decoding, note that each job will use a GPU
+mode=asr              # asr, st, mtl
 # framework=openai # huggingface, openai
 peft_method=lora # none, lora, qlora
 preprocessing_num_proc=16
@@ -83,16 +83,14 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/hf_data
-    datadir=data/${src_lang}
-    dumpdir=dump/${src_lang}
+    hf_datadir=/exp/cxiao/scale23/hf_data_merged
     opts+=' --merged_data_base '
     opts+=$merged_data_base
 else
     hf_datadir=/exp/cxiao/scale23/hf_data
-    datadir=data/${src_lang}
-    dumpdir=dump/${src_lang}
 fi
+datadir=data/${src_lang}
+dumpdir=dump/${src_lang}
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
 local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -138,8 +136,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 1 \
-    --stop_stage 6 \
+    --stage 7 \
+    --stop_stage 7 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \

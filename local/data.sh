@@ -18,9 +18,9 @@ start_at_zero=false
 datadir=data
 SECONDS=0
 
-. utils/parse_options.sh || exit 1;
-
 scale_data_base=/exp/scale23/data/3-way
+
+. utils/parse_options.sh || exit 1;
 
 data_base_dir=${scale_data_base}/${src_lang}
 testset_dir=${data_base_dir}/testsets/

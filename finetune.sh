@@ -58,6 +58,9 @@ precompute_feats=true    # Whether to precompute features (useful for multi-gpu 
 ds_config=               # Path to the deepspeed config file
 save_eval_preds=         # Path to store the evaluation predictions for analysis
 master_port=29500        # Port for distributed training
+merge_utt=false          # Whether to merge utterances to the closest 30s for training and inference
+merged_data_base=        # Base directory for merged data
+remove_ark=false         # Whether to remove ark files after merging
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -567,8 +570,8 @@ if ! "${skip_data_prep}"; then
             # If nothing is need, then format_wav_scp.sh does nothing:
             # i.e. the input file format and rate is same as the output.
 
-            for dset in "${train_set}" "${valid_set}" ${test_sets}; do
-                #for dset in ${train_set}; do
+            # for dset in "${train_set}" "${valid_set}" ${test_sets}; do
+            for dset in ${train_set}; do
                 if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                     _suf="/org"
                 else
@@ -708,7 +711,8 @@ if ! "${skip_data_prep}"; then
         log "Stage 4: Remove long/short $datadir: ${data_feats}/org -> ${data_feats}"
 
         # NOTE(kamo): Not applying to test_sets to keep original data
-        for dset in "${train_set}" "${valid_set}"; do
+        # for dset in "${train_set}" "${valid_set}"; do
+        for dset in ${train_set}; do
             # Copy data dir
             utils/copy_data_dir.sh --validate_opts --non-print "${data_feats}/org/${dset}" "${data_feats}/${dset}"
             cp "${data_feats}/org/${dset}/feats_type" "${data_feats}/${dset}/feats_type"
@@ -767,15 +771,12 @@ if ! "${skip_data_prep}"; then
                 mv ${data_feats}/${dset}/${utt_extra_file}.tmp ${data_feats}/${dset}/${utt_extra_file}
             done
         done
-
-        # # shellcheck disable=SC2002
-        # cat ${lm_train_text} | awk ' { if( NF != 1 ) print $0; } ' \
-        #     > "${data_feats}/lm_train.${src_lang}.${tgt_case}.${tgt_lang}.txt"
     fi
 
     if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         log "Stage 5: Merge the wav.scp for the raw wav files to be decoded."
-        for dset in "${train_set}" "${valid_set}" ${test_sets}; do
+        # for dset in "${train_set}" "${valid_set}" ${test_sets}; do
+        for dset in ${train_set}; do
             if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                 _suf="/org"
             else
@@ -784,12 +785,76 @@ if ! "${skip_data_prep}"; then
             cat ${data_feats}${_suf}/${dset}/wav/*/wav.scp >${data_feats}${_suf}/${dset}/wav_raw.scp
         done
     fi
+
+    if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
+        log "Stage 6: Export the data directory and merge the utterances if specified."
+        stm_exportdir=${dumpdir}/export
+        ${python} pyscripts/audio/export_wav.py --split-dev --src_lang ${src_lang} --outdir ${stm_exportdir}
+
+        if "${merge_utt}"; then
+            pyscripts/utils/merge_utts.py \
+                --input_base_dir ${stm_exportdir} \
+                --output_base_dir "${merged_data_base}" \
+                --src_lang ${src_lang} \
+                --tgt_lang ${tgt_lang} \
+                --num_outputs ${nj} \
+                --splits ${train_set} ${valid_set} ${test_sets}
+
+            _logdir="${merged_data_base}/tmp/${src_lang}/logdir"
+            for _path in "${_logdir}"/*; do
+                dset=${_path##*/}
+
+                # If the merged stm file exists already, don't do it again
+                if [ ! -d "${dumpdir}/merged/${dset}" ]; then
+                    log "Merging utterances for ${dset}"
+                    ${decode_cmd} JOB=1:"${nj}" "${_logdir}/${dset}"/merge.JOB.log \
+                        ${python} pyscripts/utils/generate_merged_utts.py \
+                        --keyfile ${_path}/keys.${dset}.JOB.scp \
+                        --dumpdir ${dumpdir}/merged/${dset}/format.JOB \
+                        --output_dir ${merged_data_base}/${src_lang}
+                fi
+
+                # Merge the resulted stm files
+                mkdir -p ${merged_data_base}/${src_lang}
+                # There is a system lag in the file system, so wait for a while
+                sleep 4
+                for i in $(seq "${nj}"); do
+                    cat "${dumpdir}/merged/${dset}/format.${i}/merged.sr.stm"
+                done >"${merged_data_base}/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm"
+                for i in $(seq "${nj}"); do
+                    cat "${dumpdir}/merged/${dset}/format.${i}/merged.st.stm"
+                done >"${merged_data_base}/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm"
+            done
+        fi
+
+        if "${remove_ark}"; then
+            for dset in "${train_set}" "${valid_set}" ${test_sets}; do
+                log "Removing ark files for ${dset}..."
+                if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
+                    _suf="/org"
+                else
+                    _suf=""
+                fi
+
+                rm -f "${data_feats}${_suf}/${dset}/wav.scp"
+                rm -rf "${data_feats}${_suf}/${dset}/data"
+            done
+        fi
+    fi
+
 else
     log "Skip the stages for data preparation"
 fi
 
-if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
-    log "Stage 6: Run finetuning on the training data"
+# Re-check if the training set needs the "_sp" suffix, note that this is to
+# accommodate the "skip_data_prep" mode, i.e. if the suffix is there already,
+# don't add it again.
+if [ -n "${speed_perturb_factors}" ] && ! echo "${train_set}" | grep -q "_sp"; then
+    train_set="${train_set}_sp"
+fi
+
+if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+    log "Stage 7: Run finetuning on the training data"
     _dir="${st_exp}/${src_lang}/${mode}/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
@@ -841,7 +906,7 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.train.${mode}" ]; then
             ${train_tool} \
                 --feat-extraction \
-                --train-set ${train_set}_sp \
+                --train-set ${train_set} \
                 --src-lang ${src_lang} \
                 --tgt-lang ${tgt_lang} \
                 --model_name ${model_name} ${opts}
@@ -852,7 +917,7 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
 
     if "${debug}"; then
         ${train_tool} \
-            --train-set ${train_set}_sp \
+            --train-set ${train_set} \
             --src-lang ${src_lang} \
             --tgt-lang ${tgt_lang} \
             --output_dir ${_dir} \
@@ -863,10 +928,11 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         #       but it's used only for deciding the sample ids.
         # shellcheck disable=SC2046,SC2086
         # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-        ${cuda_cmd} --hostname 'r9n01' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        ${cuda_cmd} --hostname '!r5n0*' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
             ${train_tool} \
-            --train-set ${train_set}_sp \
+            --train-set ${train_set} \
             --src-lang ${src_lang} \
             --tgt-lang ${tgt_lang} \
             --output_dir ${_dir} \
@@ -875,26 +941,39 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
 
 fi
 
-if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    log "Stage 7: Run (distributed) ASR inference on the dev/test data."
-    for dset in ${valid_set} ${test_sets}; do
+if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
+    log "Stage 8: Run (distributed) ASR inference on the dev/test data."
+    # for dset in ${train_set} ${valid_set} ${test_sets}; do
+    for dset in ${train_set}; do
         # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ]; then
             _suf="/org"
+        elif [ "${dset}" = "${train_set}" ]; then
+            _suf="/org"
+            dset="${train_set}"
         else
             _suf=""
         fi
         _dsetdir=${data_feats}${_suf}/${dset}
-        _dir="${st_exp}/${src_lang}/${dset}"
-        _modeldir="${st_exp}/${src_lang}/${mode}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}"
+        # _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}"
+        _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}/checkpoint-3600"
         _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
         mkdir -p "${_logdir}"
 
-        # 1. Split the key file
-        _nj=$(min "${inference_nj}" "$(wc <${_dsetdir}/wav_raw.scp -l)")
+        if [ "${dset}" = "${train_set}" ]; then
+            ${python} pyscripts/utils/filter_sp.py \
+                -i "${_dsetdir}/wav_raw.scp" \
+                -o "${_dsetdir}/wav_raw_nosp.scp"
 
-        key_file=${_dsetdir}/wav_raw.scp
+            key_file=${_dsetdir}/wav_raw_nosp.scp
+        else
+            key_file=${_dsetdir}/wav_raw.scp
+        fi
+        # 1. Split the key file
+        _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
+
         split_scps=""
         for n in $(seq "${_nj}"); do
             split_scps+=" ${_logdir}/decode.${n}.scp"
@@ -911,7 +990,8 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             opts+=" --dset ${_hf_dset} "
 
             if [ "${peft_method}" != none ]; then
-                opts+=" --peft_method ${peft_method} "
+                # TODO: Fix this
+                opts+=" --peft-model ${peft_method} "
             fi
 
             inference_tool="pyscripts/utils/hf_whisper_inference.py"
@@ -939,8 +1019,8 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     done
 fi
 
-if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
-    log "Stage 8: Run evaluation on the ASR decoded data."
+if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
+    log "Stage 9: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
     for dset in ${valid_set} ${test_sets}; do
@@ -949,7 +1029,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
-        _dir="${st_exp}/${src_lang}/${dset}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}"
         _asr_hyp="${PWD}/${_dir}/text"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 

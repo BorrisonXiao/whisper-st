@@ -2,28 +2,45 @@
 
 import yaml
 
-DEFAULT = dict(
-    per_device_train_batch_size=16,
-    per_device_eval_batch_size=24,
-    gradient_accumulation_steps=1,
-    warmup_steps=800,
-    max_steps=2400,
-    learning_rate=1e-4,
-    weight_decay=0.01,
-    fp16=True,
-    predict_with_generate=True,
-    generation_max_length=225,
-    logging_steps=30,
-    report_to=["tensorboard"],
-    evaluation_strategy="steps",
-    eval_steps=1,
-    save_strategy="steps",
-    save_steps=300,
-    load_best_model_at_end=True,
-    metric_for_best_model="wer",
-    greater_is_better=False,
-    remove_unused_columns=False,  # This is important for PEFT
-)
+DEFAULT = {
+    "Seq2SeqTrainingArguments": dict(
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=24,
+        gradient_accumulation_steps=1,
+        warmup_steps=800,
+        max_steps=2400,
+        learning_rate=1e-4,
+        weight_decay=0.01,
+        fp16=True,
+        predict_with_generate=True,
+        generation_max_length=225,
+        logging_steps=30,
+        report_to=["tensorboard"],
+        evaluation_strategy="steps",
+        eval_steps=1,
+        save_strategy="steps",
+        save_steps=300,
+        load_best_model_at_end=True,
+        metric_for_best_model="cer",
+        greater_is_better=False,
+        remove_unused_columns=False,  # This is important for PEFT
+    ),
+    "LoraConfig": dict(
+        inference_mode=False,
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.1,
+        target_modules=".*decoder.*(self_attn|encoder_attn).*(q_proj|v_proj)$",
+    ),
+    "WhisperConfig": dict(
+        apply_spec_augment=True,
+        mask_time_prob=0.05,
+        mask_time_length=10,
+        mask_time_min_masks=2,
+        mask_feature_prob=0.05,
+        mask_feature_length=10,
+        mask_feature_min_masks=0,
+    )}
 
 
 class Config(object):

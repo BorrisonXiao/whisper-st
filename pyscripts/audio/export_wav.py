@@ -10,12 +10,14 @@ import shutil
 from local.data_prep.stm import parse_StmUtterance
 
 
-def export_wav(dumpdir, outdir, refdir, split_dev=False):
+def export_wav(dumpdir, src_lang, outdir, refdir, split_dev=False):
     """
     Helper script for exporting the wav_raw.scp files (from relative to absolute path).
     """
     outdir.mkdir(parents=True, exist_ok=True)
     for langdir in dumpdir.iterdir():
+        if langdir.name not in src_lang:
+            continue
         lang = langdir.name
         rawdir = langdir / "raw"
         # Iterate over testsets first
@@ -95,6 +97,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dumpdir", help="dump directory",
                         type=Path, default="/exp/cxiao/scale23/dump_scale23")
+    parser.add_argument("--src_lang", help="source language",
+                        default=["ara", "cmn", "spa", "rus", "kor"], nargs="+")
     parser.add_argument("--outdir", help="output directory",
                         type=Path, default="dump/export")
     parser.add_argument("--refdir", help="reference directory",
@@ -103,7 +107,7 @@ def main():
                         action="store_true")
     args = parser.parse_args()
 
-    export_wav(dumpdir=args.dumpdir, outdir=args.outdir, refdir=args.refdir,
+    export_wav(dumpdir=args.dumpdir, src_lang=args.src_lang, outdir=args.outdir, refdir=args.refdir,
                split_dev=args.split_dev)
 
 

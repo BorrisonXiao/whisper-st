@@ -110,8 +110,14 @@ def main():
     parser.add_argument("--model_name", type=str, default="tiny")
 
     args = parser.parse_args()
-    inference(keyfile=args.keyfile, dset=args.dset, src_lang=LANGS[args.src_lang], tgt_lang=LANGS[
-              args.tgt_lang], output_dir=args.output_dir, model_name=args.model_name, task=args.task, pretrained_model=args.pretrained_model
+    inference(keyfile=args.keyfile,
+              dset=args.dset,
+              src_lang=LANGS[args.src_lang],
+              tgt_lang=LANGS[args.tgt_lang],
+              output_dir=args.output_dir,
+              model_name=args.model_name,
+              task=args.task,
+              pretrained_model=args.pretrained_model,
               peft_model=args.peft_model)
 
 

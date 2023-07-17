@@ -9,11 +9,11 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-src_lang=kor
+# src_lang=kor
 # src_lang=ara
 # src_lang=cmn
 # src_lang=spa
-# src_lang=rus
+src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
@@ -23,8 +23,8 @@ train_dev=dev1
 debug=false
 ds_config=conf/tuning/ds2.json
 mode=asr # asr, st, mtl
-# peft_method=lora # none, lora, qlora
-peft_method=none # none, lora, qlora
+peft_method=lora # none, lora, qlora
+# peft_method=none # none, lora, qlora
 
 opts=
 if "${debug}"; then
@@ -103,7 +103,7 @@ local_data_opts+=' --datadir '
 local_data_opts+=$datadir
 
 ./finetune.sh \
-    --ngpu 3 \
+    --ngpu 4 \
     --expdir ft_exp \
     --local_data_opts "$local_data_opts" \
     --audio_format "flac.ark" \

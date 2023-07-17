@@ -208,6 +208,15 @@ def parse_config(config):
                 lora_alpha=32,
                 lora_dropout=0.1,
                 target_modules=".*decoder.*(self_attn|encoder_attn).*(q_proj|v_proj)$",
+            ),
+            "WhisperConfig": dict(
+                apply_spec_augment=True,
+                mask_time_prob=0.05,
+                mask_time_length=10,
+                mask_time_min_masks=2,
+                mask_feature_prob=0.05,
+                mask_feature_length=10,
+                mask_feature_min_masks=0,
             )}
     else:
         res = Config(config).get()
@@ -320,8 +329,9 @@ def finetune(
         # we do not want to group tokens when computing the metrics
         pred_str = processor.tokenizer.batch_decode(
             pred_ids, skip_special_tokens=True)
-        pred_str_raw = processor.tokenizer.batch_decode(
-            pred_ids, skip_special_tokens=False)
+        # decode only the first 4 special tokens
+        prefixes = processor.tokenizer.batch_decode(
+            pred_ids[:, :4], skip_special_tokens=False)
         label_str = processor.tokenizer.batch_decode(
             label_ids, skip_special_tokens=True)
 
@@ -337,9 +347,10 @@ def finetune(
 
         if save_eval_preds is not None:
             with open(save_eval_preds, "a") as f:
-                for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:1000]):
+                for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:500]):
                     f.write(f"Ref: {label}\n")
-                    f.write(f"Pred: {''.join(pred_str_raw[i].split()[:4])}{pred}\n")
+                    f.write(f"Pred: {pred}\n")
+                    f.write(f"Prefix: {prefixes[i]}\n\n")
                 print("--------------------------------------------------", file=f)
 
         cer = metric.compute(predictions=pred_str, references=label_str)
@@ -374,7 +385,7 @@ def finetune(
 
     if peft_method:
         if peft_method == "lora":
-            _peft_config = _args['LoraConfig']
+            _peft_config = _args.get("LoraConfig", {})
             peft_config = LoraConfig(
                 inference_mode=False,
                 **_peft_config
@@ -391,6 +402,16 @@ def finetune(
     # TODO: Extend this for multilingual training
     model.generate = partial(
         model.generate, language=LANGS[src_lang], task="transcribe" if mode == "asr" else "translate")
+
+    # Apply SpecAugment if specified
+    if _args.get("WhisperConfig", None) is not None and _args["WhisperConfig"].get("apply_spec_augment", False):
+        model.config.apply_spec_augment = True
+        model.config.mask_time_prob = _args['WhisperConfig'].get("mask_time_prob", 0.05)
+        model.config.mask_time_length = _args['WhisperConfig'].get("mask_time_length", 10)
+        model.config.mask_time_min_masks = _args['WhisperConfig'].get("mask_time_min_masks", 2)
+        model.config.mask_feature_prob = _args['WhisperConfig'].get("mask_feature_prob", 0.05)
+        model.config.mask_feature_length = _args['WhisperConfig'].get("mask_feature_length", 10)
+        model.config.mask_feature_min_masks = _args['WhisperConfig'].get("mask_feature_min_masks", 0)
 
     trainer = Seq2SeqTrainer(
         model=model,
