@@ -30,23 +30,24 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # Load model and processor
-    if pretrained_model is not None:
-        print(f"Loading model from {pretrained_model}")
-        processor = WhisperProcessor.from_pretrained(pretrained_model)
-        model = WhisperForConditionalGeneration.from_pretrained(
-            pretrained_model).to(device)
-    else:
-        processor = WhisperProcessor.from_pretrained(
-            f"openai/whisper-{model_name}")
-        model = WhisperForConditionalGeneration.from_pretrained(
-            f"openai/whisper-{model_name}").to(device)
-
     # TODO: Handle the PEFT model
     if peft_model is not None:
-        raise NotImplementedError
         peft_config = PeftConfig.from_pretrained(peft_model)
-        model = WhisperForConditionalGeneration.from_pretrained(peft_config.base_model_name_or_path).to(device)
+        model = WhisperForConditionalGeneration.from_pretrained(
+            peft_config.base_model_name_or_path).to(device)
+        processor = WhisperProcessor.from_pretrained(peft_config.base_model_name_or_path)
         model = PeftModel.from_pretrained(model, peft_model)
+    else:
+        if pretrained_model is not None:
+            print(f"Loading model from {pretrained_model}")
+            processor = WhisperProcessor.from_pretrained(pretrained_model)
+            model = WhisperForConditionalGeneration.from_pretrained(
+                pretrained_model).to(device)
+        else:
+            processor = WhisperProcessor.from_pretrained(
+                f"openai/whisper-{model_name}")
+            model = WhisperForConditionalGeneration.from_pretrained(
+                f"openai/whisper-{model_name}").to(device)
 
     forced_decoder_ids = processor.get_decoder_prompt_ids(
         language=src_lang, task=task)

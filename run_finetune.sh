@@ -9,16 +9,16 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-src_lang=kor
+# src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
-# train_set=train-cts
-train_set=train-all
+train_set=train-cts
+# train_set=train-all
 train_dev=dev1
 # debug=true
 debug=false
@@ -26,18 +26,20 @@ ds_config=conf/tuning/ds2.json
 merge_utt=true
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
+mode=asr # asr, st, mtl
+peft_method=lora # none, lora, qlora
 
 opts=
 if "${debug}"; then
-    st_config=conf/tuning/whisper-debug.yaml
     model=tiny # base, large, large-v2 etc.
+    st_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
 else
-    st_config=conf/tuning/finetune_asr_whisper_large-v2_cmn.yaml
+    model=large-v2 # base, large, large-v2 etc.
+    st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    model=large-v2 # base, large, large-v2 etc.
     # resume_from_checkpoint=ft_exp/hf_whisper_large-v2/cmn/asr/lora/checkpoint-14000
     resume_from_checkpoint=
 fi
@@ -66,9 +68,7 @@ test_set=${testset_dict[${src_lang}]} # This option is to run eval
 
 framework=huggingface # huggingface, openai
 inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
-mode=asr # asr, st, mtl
 # framework=openai # huggingface, openai
-peft_method=lora # none, lora, qlora
 preprocessing_num_proc=16
 on_the_fly_feat=true
 
@@ -138,8 +138,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 6 \
-    --stop_stage 6 \
+    --stage 8 \
+    --stop_stage 8 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \

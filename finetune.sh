@@ -969,8 +969,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         fi
         _dsetdir=${data_feats}${_suf}/${dset}
         _dir="${st_exp}/${src_lang}/decode/${dset}"
-        # _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}"
-        _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}/checkpoint-3600"
+        _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}"
+        # _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}/checkpoint-3600"
         _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
         mkdir -p "${_logdir}"
 
@@ -1003,7 +1003,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
 
             if [ "${peft_method}" != none ]; then
                 # TODO: Fix this
-                opts+=" --peft-model ${peft_method} "
+                opts+=" --peft-model ${_modeldir} "
             fi
 
             inference_tool="pyscripts/utils/hf_whisper_inference.py"
@@ -1011,17 +1011,27 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             inference_tool="pyscripts/utils/whisper_inference.py"
         fi
 
-        # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-        #       but it's used only for deciding the sample ids.
-        # shellcheck disable=SC2046,SC2086
-        ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+        if "${debug}"; then
             ${inference_tool} \
-            --keyfile ${_logdir}/decode.JOB.scp \
-            --src-lang ${src_lang} \
-            --tgt-lang ${tgt_lang} \
-            --output_dir ${_logdir}/output.JOB \
-            --pretrained-model ${_modeldir} \
-            --model_name ${model_name} ${opts}
+                --keyfile ${_logdir}/decode.1.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_logdir}/output.1 \
+                --pretrained-model ${_modeldir} \
+                --model_name ${model_name} ${opts}
+        else
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${inference_tool} \
+                --keyfile ${_logdir}/decode.JOB.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_logdir}/output.JOB \
+                --pretrained-model ${_modeldir} \
+                --model_name ${model_name} ${opts}
+        fi
 
         # 3. Concatenates the output files from each jobs
         mkdir -p "${_dir}"
