@@ -61,6 +61,7 @@ master_port=29500        # Port for distributed training
 merge_utt=false          # Whether to merge utterances to the closest 30s for training and inference
 merged_data_base=        # Base directory for merged data
 remove_ark=false         # Whether to remove ark files after merging
+normalize_text=false     # Whether to normalize text before training and during validation
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -817,13 +818,20 @@ if ! "${skip_data_prep}"; then
                 # Merge the resulted stm files
                 mkdir -p ${merged_data_base}/${src_lang}
                 # There is a system lag in the file system, so wait for a while
-                sleep 4
+                sleep 3
+                # If dset is a test set, i.e. it contains the "_test" substring, add a suffix to the langdir
+                if [[ ${dset} == *"_test" ]]; then
+                    _suf="/testsets"
+                else
+                    _suf=""
+                fi
+                mkdir -p "${merged_data_base}/${src_lang}${_suf}"
                 for i in $(seq "${nj}"); do
                     cat "${dumpdir}/merged/${dset}/format.${i}/merged.sr.stm"
-                done >"${merged_data_base}/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm"
+                done >"${merged_data_base}/${src_lang}${_suf}/sr.${src_lang}-${src_lang}.${dset}.stm"
                 for i in $(seq "${nj}"); do
                     cat "${dumpdir}/merged/${dset}/format.${i}/merged.st.stm"
-                done >"${merged_data_base}/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm"
+                done >"${merged_data_base}/${src_lang}${_suf}/st.${src_lang}-${tgt_lang}.${dset}.stm"
             done
         fi
 
@@ -855,7 +863,7 @@ fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     log "Stage 7: Run finetuning on the training data"
-    _dir="${st_exp}/${src_lang}/${mode}/${peft_method}"
+    _dir="${st_exp}/${src_lang}/${train_set}/${mode}/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
@@ -881,6 +889,10 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         if "${on_the_fly_feat}"; then
             opts+=" --on-the-fly-feat-extraction "
             _feat_type=raw
+        fi
+
+        if "${normalize_text}"; then
+            opts+=" --normalize_text "
         fi
 
         opts+=" --save_feature_dir ${hf_datadir}/features/${_feat_type} "

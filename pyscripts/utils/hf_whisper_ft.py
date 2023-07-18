@@ -8,7 +8,7 @@ import argparse
 from pathlib import Path
 from peft import get_peft_model, LoraConfig
 import torch
-from datasets import load_from_disk, concatenate_datasets
+from datasets import load_from_disk, concatenate_datasets, load_dataset
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer, EnglishTextNormalizer
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
@@ -42,25 +42,38 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
             # translation will be named as "text" in the returned dataset.
             raise NotImplementedError
         elif mode == "asr":
-            # For ASR, we only need the transcript
-            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
-            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
-            # Rename the "transcript" column to "text"
-            train_dset = train_dset.rename_column("transcript", "text")
-            val_dset = val_dset.rename_column("transcript", "text")
-            # Remove the "translation" column
-            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
-                                                   "audio", "text", "src_lang", "tgt_lang"]])
-            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
-                                               "audio", "text", "src_lang", "tgt_lang"]])
-            # TODO: For ASR, it might be better to convert tgt_lang to src_lang.
-            # Not doing this for now due to permission issues.
-            # train_dset = train_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
-            # val_dset = val_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
-            train_dset_dict[f"{src_lang}_{mode}"] = train_dset
-            val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+            if lang == "eng":
+                # Using librispeech-100 for debugging
+                train_dset = load_dataset(
+                    "librispeech_asr", "clean", split="train.100")
+                val_dset = load_dataset(
+                    "librispeech_asr", "clean", split="validation")
+                train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                    "audio", "text"]])
+                val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                    "audio", "text"]])
+                train_dset_dict[f"{src_lang}_{mode}"] = train_dset
+                val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+            else:
+                # For ASR, we only need the transcript
+                train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+                val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+                # Rename the "transcript" column to "text"
+                train_dset = train_dset.rename_column("transcript", "text")
+                val_dset = val_dset.rename_column("transcript", "text")
+                # Remove the "translation" column
+                train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                    "audio", "text", "src_lang", "tgt_lang"]])
+                val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                    "audio", "text", "src_lang", "tgt_lang"]])
+                # TODO: For ASR, it might be better to convert tgt_lang to src_lang.
+                # Not doing this for now due to permission issues.
+                # train_dset = train_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
+                # val_dset = val_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
+                train_dset_dict[f"{src_lang}_{mode}"] = train_dset
+                val_dset_dict[f"{src_lang}_{mode}"] = val_dset
         elif mode == "st":
-            # For ST, we need only the  translation
+            # For ST, we need only the translation
             raise NotImplementedError
         else:
             raise ValueError(f"Unknown mode: {mode}")
@@ -99,7 +112,7 @@ def prepare_dataset(
                 logging.warning(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
             if mode == "asr":
-                std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer()
+                std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
             else:
                 std = EnglishTextNormalizer()
             processor = WhisperProcessor.from_pretrained(
@@ -406,12 +419,18 @@ def finetune(
     # Apply SpecAugment if specified
     if _args.get("WhisperConfig", None) is not None and _args["WhisperConfig"].get("apply_spec_augment", False):
         model.config.apply_spec_augment = True
-        model.config.mask_time_prob = _args['WhisperConfig'].get("mask_time_prob", 0.05)
-        model.config.mask_time_length = _args['WhisperConfig'].get("mask_time_length", 10)
-        model.config.mask_time_min_masks = _args['WhisperConfig'].get("mask_time_min_masks", 2)
-        model.config.mask_feature_prob = _args['WhisperConfig'].get("mask_feature_prob", 0.05)
-        model.config.mask_feature_length = _args['WhisperConfig'].get("mask_feature_length", 10)
-        model.config.mask_feature_min_masks = _args['WhisperConfig'].get("mask_feature_min_masks", 0)
+        model.config.mask_time_prob = _args['WhisperConfig'].get(
+            "mask_time_prob", 0.05)
+        model.config.mask_time_length = _args['WhisperConfig'].get(
+            "mask_time_length", 10)
+        model.config.mask_time_min_masks = _args['WhisperConfig'].get(
+            "mask_time_min_masks", 2)
+        model.config.mask_feature_prob = _args['WhisperConfig'].get(
+            "mask_feature_prob", 0.05)
+        model.config.mask_feature_length = _args['WhisperConfig'].get(
+            "mask_feature_length", 10)
+        model.config.mask_feature_min_masks = _args['WhisperConfig'].get(
+            "mask_feature_min_masks", 0)
 
     trainer = Seq2SeqTrainer(
         model=model,

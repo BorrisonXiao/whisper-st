@@ -1,10 +1,10 @@
 Seq2SeqTrainingArguments:
-  per_device_train_batch_size: 2
-  per_device_eval_batch_size: 128
+  per_device_train_batch_size: 48
+  per_device_eval_batch_size: 60
   gradient_accumulation_steps: 1
-  warmup_steps: 2000
-  max_steps: 36000
-  learning_rate: 1e-4
+  warmup_steps: 400
+  max_steps: 3000
+  learning_rate: 1e-5
   weight_decay: 1e-2
   fp16: True
   predict_with_generate: True
@@ -12,9 +12,9 @@ Seq2SeqTrainingArguments:
   logging_steps: 50
   report_to: ["tensorboard"]
   evaluation_strategy: "steps"
-  eval_steps: 5
+  eval_steps: 150
   save_strategy: "steps"
-  save_steps: 5
+  save_steps: 150
   load_best_model_at_end: True
   metric_for_best_model: "cer"
   greater_is_better: False
