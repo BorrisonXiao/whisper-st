@@ -923,7 +923,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         # If the feature is already extracted in previous runs, skip this step
         if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.dev.${mode}" ] &&
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.train.${mode}" ]; then
-            ${train_tool} \
+            ${python_hf} ${train_tool} \
                 --feat-extraction \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
