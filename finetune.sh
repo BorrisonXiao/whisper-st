@@ -23,7 +23,7 @@ min() {
 SECONDS=0
 
 # Evaluation related
-sclite_path=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
+sclite_path=sclite
 
 # General configuration
 datadir=
@@ -492,7 +492,7 @@ if [ -z "${st_exp}" ]; then
     else
         _suf=""
     fi
-    
+
     if [ "${framework}" = "huggingface" ]; then
         st_exp="${expdir}/hf_${st_tag}${_suf}"
     else
@@ -947,7 +947,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         # shellcheck disable=SC2046,SC2086
         # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
         # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-        ${cuda_cmd} --hostname '!r5n0*' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+        ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
             ${train_tool} \
             --train-set ${train_set} \

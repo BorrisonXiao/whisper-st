@@ -28,6 +28,8 @@ merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
 mode=asr # asr, st, mtl
 peft_method=none # none, lora, qlora
+normalize_text=false
+master_port=29500
 
 opts=
 if "${debug}"; then
@@ -159,4 +161,6 @@ local_data_opts+=$datadir
     --dev_name ${train_dev} \
     --merge_utt ${merge_utt} \
     --remove_ark ${remove_ark} \
+    --normalize_text ${normalize_text} \
+    --master_port ${master_port} \
     --skip_data_prep false ${opts}
