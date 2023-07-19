@@ -935,7 +935,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     fi
 
     if "${debug}"; then
-        ${train_tool} \
+        ${python_hf} ${train_tool} \
             --train-set ${train_set} \
             --src-lang ${src_lang} \
             --tgt-lang ${tgt_lang} \
