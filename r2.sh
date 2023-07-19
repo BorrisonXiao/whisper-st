@@ -30,6 +30,7 @@ mode=asr # asr, st, mtl
 peft_method=lora # none, lora, qlora
 normalize_text=false
 master_port=29501
+python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 
 opts=
 if "${debug}"; then
@@ -163,4 +164,5 @@ local_data_opts+=$datadir
     --remove_ark ${remove_ark} \
     --normalize_text ${normalize_text} \
     --master_port ${master_port} \
+    --python_hf ${python_hf} \
     --skip_data_prep false ${opts}

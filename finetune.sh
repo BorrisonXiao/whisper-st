@@ -62,6 +62,7 @@ merge_utt=false          # Whether to merge utterances to the closest 30s for tr
 merged_data_base=        # Base directory for merged data
 remove_ark=false         # Whether to remove ark files after merging
 normalize_text=false     # Whether to normalize text before training and during validation
+python_hf=python3        # Specify python to execute hugging face commands.
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -948,7 +949,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
         # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
         ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-            /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3 -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
+            ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
             ${train_tool} \
             --train-set ${train_set} \
             --src-lang ${src_lang} \
