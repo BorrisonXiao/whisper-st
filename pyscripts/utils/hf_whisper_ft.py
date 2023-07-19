@@ -17,6 +17,7 @@ from pyscripts.utils.config_parser import Config
 import logging
 import json
 from functools import partial
+import chinese_converter
 
 LANGS = {
     "ara": "arabic",
@@ -267,7 +268,7 @@ def feat_extraction(
                                   preprocessing_num_proc=preprocessing_num_proc,
                                   normalize_text=normalize_text,
                                   save_feature_dir=save_feature_dir,
-                                  dset_type="train",
+                                  dset_type=train_set,
                                   local_rank=local_rank,
                                   on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                   train=train)
@@ -276,7 +277,7 @@ def feat_extraction(
                                 preprocessing_num_proc=preprocessing_num_proc,
                                 normalize_text=normalize_text,
                                 save_feature_dir=save_feature_dir,
-                                dset_type="dev",
+                                dset_type=dev_name,
                                 local_rank=local_rank,
                                 on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                 train=train)
@@ -347,6 +348,11 @@ def finetune(
             pred_ids[:, :4], skip_special_tokens=False)
         label_str = processor.tokenizer.batch_decode(
             label_ids, skip_special_tokens=True)
+        
+        # Perform the traditional-to-simplified conversion for Chinese anyways
+        if src_lang == "cmn":
+            pred_str = [chinese_converter.to_simplified(char) for char in pred_str]
+            label_str = [chinese_converter.to_simplified(char) for char in label_str]
 
         if normalize_eval:
             std = BasicTextNormalizer()

@@ -27,7 +27,7 @@ merge_utt=true
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
 mode=asr # asr, st, mtl
-peft_method=lora # none, lora, qlora
+peft_method=none # none, lora, qlora
 
 opts=
 if "${debug}"; then
@@ -35,16 +35,20 @@ if "${debug}"; then
     st_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
 else
-    model=large-v2 # base, large, large-v2 etc.
-    st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}.yaml
+    model=medium # base, large, large-v2 etc.
+    st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}_${peft_method}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    # resume_from_checkpoint=ft_exp/hf_whisper_large-v2/cmn/asr/lora/checkpoint-14000
     resume_from_checkpoint=
 fi
-# ds_config=conf/tuning/ds3.json
-save_eval_preds=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2/cmn/asr/lora/logdir/eval_preds.txt
+
+if "${merge_utt}"; then
+    _suf="_merged"
+else
+    _suf=
+fi
+save_eval_preds=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_${model}${_suf}/${src_lang}/${train_set}_sp/${mode}/${peft_method}/logdir/eval_preds.txt
 
 if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
@@ -70,7 +74,7 @@ framework=huggingface # huggingface, openai
 inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
 # framework=openai # huggingface, openai
 preprocessing_num_proc=16
-on_the_fly_feat=true
+on_the_fly_feat=false
 
 src_case=tc #lc.rm
 tgt_case=tc #lc.rm
@@ -83,7 +87,7 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/hf_data
+    hf_datadir=/exp/cxiao/scale23/_merged_hf_data
     datadir=data/${src_lang}
     dumpdir=dump/${src_lang}
     opts+=' --merged_data_base '
@@ -138,8 +142,8 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 8 \
-    --stop_stage 8 \
+    --stage 7 \
+    --stop_stage 7 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \

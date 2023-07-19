@@ -487,10 +487,16 @@ if [ -z "${lm_stats_dir}" ]; then
 fi
 # The directory used for training commands
 if [ -z "${st_exp}" ]; then
-    if [ "${framework}" = "huggingface" ]; then
-        st_exp="${expdir}/hf_${st_tag}"
+    if "${merge_utt}"; then
+        _suf="_merged"
     else
-        st_exp="${expdir}/${st_tag}"
+        _suf=""
+    fi
+    
+    if [ "${framework}" = "huggingface" ]; then
+        st_exp="${expdir}/hf_${st_tag}${_suf}"
+    else
+        st_exp="${expdir}/${st_tag}${_suf}"
     fi
 fi
 if [ -z "${lm_exp}" ]; then
