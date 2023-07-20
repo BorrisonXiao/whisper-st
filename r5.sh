@@ -11,15 +11,16 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
-src_lang=rus
+# src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
 # train_set=train-cts
 train_set=train-all
 train_dev=dev1
+extra_dev=dev2
 # debug=true
 debug=false
 ds_config=conf/tuning/ds2.json
@@ -29,16 +30,16 @@ remove_ark=true
 mode=asr # asr, st, mtl
 peft_method=lora # none, lora, qlora
 normalize_text=false
-master_port=29503
+master_port=29505
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 
 opts=
 if "${debug}"; then
-    model=tiny # base, large, large-v2 etc.
+    model=medium # base, large, large-v2 etc.
     st_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
 else
-    model=large-v2 # base, large, large-v2 etc.
+    model=medium # base, large, large-v2 etc.
     st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}_${peft_method}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
@@ -141,12 +142,13 @@ local_data_opts+=$datadir
     --speed_perturb_factors "0.9 1.0 1.1" \
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
+    --extra_valid_set "${extra_dev}" \
     --test_sets "${test_set}" \
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 7 \
-    --stop_stage 7 \
+    --stage 9 \
+    --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \

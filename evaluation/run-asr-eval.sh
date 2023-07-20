@@ -27,11 +27,13 @@ src_lang=ara
 score_dir=scores # Top directory to store results
 python=python3
 model_tag=base
-sclite=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
+sclite=sclite
 hyp_asr=/home/hltcoe/cxiao/scale23/whisper/recipe/st/exp/st_whisper_base/dev/text
 arabic=false
-dset=dev
-framework=openai
+dset=dev1
+framework=huggingface
+data_base_dir=/exp/scale23/data/3-way
+merge_utt=false
 
 declare -A dev_sets_dict
 dev_sets_dict+=(["ara"]="dev1 dev2")                                                                      # If true use WER, otherwise use CER
@@ -79,13 +81,23 @@ cts_testlist="${cts_testset_dict[${src_lang}]}"
 
 if [[ "${dset}" == *"${ood_testset_dict[${src_lang}]}"* ]]; then
     dset="${ood_testset_dict[${src_lang}]}"
-    stm_dir=/exp/scale23/data/3-way/${src_lang}/testsets/ood
+    if "${merge_utt}"; then
+        _suf=""
+    else
+        _suf="/ood"
+    fi
+    stm_dir=${data_base_dir}/${src_lang}/testsets${_suf}
     testset=${ood_testset_dict[${src_lang}]}
 elif [[ " ${cts_testlist[*]} " =~ " ${dset} " ]]; then
-    stm_dir=/exp/scale23/data/3-way/${src_lang}/testsets/cts
+    if "${merge_utt}"; then
+        _suf=""
+    else
+        _suf="/cts"
+    fi
+    stm_dir=${data_base_dir}/${src_lang}/testsets${_suf}
     testset=${dset}
 else
-    stm_dir=/exp/scale23/data/3-way/${src_lang}
+    stm_dir=${data_base_dir}/${src_lang}
     testset=${dset}
 fi
 
@@ -102,9 +114,15 @@ fi
 
 if [ "${settype}" = "dev" ]; then
     # Convert STM files to text and utt2spk files
-    cat $stm_dir/sr.${src_lang}-${src_lang}.dev.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.dev.stm"
+    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.dev.stm"
 else
-    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}.test.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
+    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}_test.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
+fi
+
+if "${merge_utt}"; then
+    _opts="--merge-utt"
+else
+    _opts=""
 fi
 
 # Convert the hypothesis file to STM format
@@ -112,7 +130,7 @@ pyscripts/utils/text2stm.py \
     -i "${hyp_asr}" \
     -o "${test_score_dir}/data/_hyp.stm" \
     -r "${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.${settype}.stm" \
-    --dset ${dset}
+    --dset ${dset} ${_opts}
 
 # Invoke the updated evaluation script
 ./run_scale23_evals.sh \

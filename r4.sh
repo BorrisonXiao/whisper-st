@@ -11,42 +11,49 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 # src_lang=all
-src_lang=eng # Using librispeech-100 for debugging
 tgt_lang=eng
 
-# train_set=train-cts
-train_set=train-all
+train_set=train-cts
+# train_set=train-all
 train_dev=dev1
+extra_dev=dev2
 # debug=true
 debug=false
 ds_config=conf/tuning/ds2.json
 merge_utt=true
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
-mode=asr # asr, st, mtl
-master_port=29504
+mode=asr         # asr, st, mtl
 peft_method=lora # none, lora, qlora
+normalize_text=false
+master_port=29504
+inference_nj=7 # Number of jobs for decoding, note that each job will use a GPU
+python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 
 opts=
 if "${debug}"; then
+    model=medium # base, large, large-v2 etc.
     st_config=conf/tuning/whisper-debug.yaml
-    model=tiny # base, large, large-v2 etc.
     resume_from_checkpoint=
 else
-    model=base # base, large, large-v2 etc.
+    model=medium # base, large, large-v2 etc.
     st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}_${peft_method}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    # resume_from_checkpoint=ft_exp/hf_whisper_large-v2/cmn/asr/lora/checkpoint-14000
     resume_from_checkpoint=
 fi
-# ds_config=conf/tuning/ds3.json
-save_eval_preds=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2/cmn/asr/lora/logdir/eval_preds.txt
+
+if "${merge_utt}"; then
+    _suf="_merged"
+else
+    _suf=
+fi
+save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${src_lang}/${train_set}_sp/${mode}/${peft_method}/logdir/eval_preds.txt
 
 if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
@@ -63,17 +70,15 @@ testset_dict+=(
     ["cmn"]="bbn_cts_bolt_test fleurs_test"
     ["kor"]="uhura_test fleurs_test"
     ["rus"]="uhura_test fleurs_test"
-    ["spa"]="fisher_test callhome_test fleurs_test"
-    ["eng"]="librispeech_test")
+    ["spa"]="fisher_test callhome_test fleurs_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
 
 framework=huggingface # huggingface, openai
-inference_nj=4        # Number of jobs for decoding, note that each job will use a GPU
+# framework=openai # huggingface, openai
 preprocessing_num_proc=16
 on_the_fly_feat=false
-normalize_text=true
 
 src_case=tc #lc.rm
 tgt_case=tc #lc.rm
@@ -86,7 +91,7 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/hf_data
+    hf_datadir=/exp/cxiao/scale23/_merged_hf_data
     datadir=data/${src_lang}
     dumpdir=dump/${src_lang}
     opts+=' --merged_data_base '
@@ -137,12 +142,13 @@ local_data_opts+=$datadir
     --speed_perturb_factors "0.9 1.0 1.1" \
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
+    --extra_valid_set "${extra_dev}" \
     --test_sets "${test_set}" \
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 7 \
-    --stop_stage 7 \
+    --stage 8 \
+    --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \
@@ -160,4 +166,5 @@ local_data_opts+=$datadir
     --remove_ark ${remove_ark} \
     --normalize_text ${normalize_text} \
     --master_port ${master_port} \
+    --python_hf ${python_hf} \
     --skip_data_prep false ${opts}

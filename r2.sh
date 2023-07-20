@@ -11,8 +11,8 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-src_lang=cmn
-# src_lang=spa
+# src_lang=cmn
+src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
@@ -26,7 +26,7 @@ ds_config=conf/tuning/ds2.json
 merge_utt=true
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
-mode=asr # asr, st, mtl
+mode=asr         # asr, st, mtl
 peft_method=lora # none, lora, qlora
 normalize_text=false
 master_port=29501
@@ -74,7 +74,7 @@ test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
 
 framework=huggingface # huggingface, openai
-inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
+inference_nj=4        # Number of jobs for decoding, note that each job will use a GPU
 # framework=openai # huggingface, openai
 preprocessing_num_proc=16
 on_the_fly_feat=false

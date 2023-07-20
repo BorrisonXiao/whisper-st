@@ -2,11 +2,12 @@
 
 import argparse
 from pathlib import Path
+from local.stm import parse_StmUtterance
 
 data_base_dir = Path("/exp/scale23/data//audio/ara/iwslt22/")
 
 
-def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev"):
+def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev", merge_utt=False):
     """
     Note that this works only for the Tunisian data.
     """
@@ -15,11 +16,20 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev"):
         # <spkid>-<filename>-<channel>_<start>_<end>
         # Example: 997612-20171122_161929_20929_B-A_00063778_00063887
         # The channel is either A or B
-        if dset == "fleurs":
-            spkid1, spkid2, filename, info = uttid.split("-")
+        splitted = uttid.split("-")
+        if len(splitted) == 3:
+            spkid, filename, info = splitted
+        elif len(splitted) == 4:
+            if merge_utt:
+                spkid, filename, _info, info = splitted
+            elif dset == "fleurs":
+                spkid1, spkid2, filename, info = splitted
+                spkid = f"{spkid1}-{spkid2}"
+        elif len(splitted) == 5 and dset == "fleurs" and merge_utt:
+            spkid1, spkid2, filename, _info, info = splitted
             spkid = f"{spkid1}-{spkid2}"
         else:
-            spkid, filename, info = uttid.split("-")
+            raise ValueError("Invalid uttid: {}".format(uttid))
         channel, start, end = info.split("_")
         start = int(start) // 100
         end = int(end) // 100
@@ -34,7 +44,10 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev"):
         spkid = splits[2]
         start = round(float(splits[3]) * 100)
         end = round(float(splits[4]) * 100)
-        return f"{spkid}-{basename}-{channel}_{start:08d}_{end:08d}"
+        stm_utt = parse_StmUtterance(stm)
+        # breakpoint()
+        return stm_utt.utterance_id(stereo=True)
+        # return f"{spkid}-{basename}-{channel}_{start:08d}_{end:08d}"
 
     # Step 1: Read the text file
     text_dict = {}
@@ -62,6 +75,7 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev"):
     with open(stm_file, "w", encoding="utf-8") as f:
         if ref_stm_dict is not None:
             for uttid, header in ref_stm_dict.items():
+                # breakpoint()
                 text = text_dict[uttid]["text"]
                 f.write(f"{header} {text}\n")
 
@@ -76,10 +90,12 @@ def main():
         "-r", "--ref", help="Reference stm file, based on which the output is sorted", default=None)
     parser.add_argument(
         "-d", "--dset", help="Dataset name", default="dev")
+    parser.add_argument(
+        "--merge-utt", help="Merge utterances", action="store_true")
 
     args = parser.parse_args()
     text2stm(text_file=args.input, stm_file=args.output,
-             ref_stm_file=args.ref, dset=args.dset)
+             ref_stm_file=args.ref, dset=args.dset, merge_utt=args.merge_utt)
 
 
 if __name__ == "__main__":

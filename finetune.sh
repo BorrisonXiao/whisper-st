@@ -156,6 +156,7 @@ download_model= # Download a model from Model Zoo and use it for decoding.
 # [Task dependent] Set the datadir name created by local/data.sh
 train_set=                # Name of training set.
 valid_set=                # Name of validation set used for monitoring/tuning network training.
+extra_valid_set=""        # Name of extra validation set used for evaluation.
 test_sets=                # Names of test sets. Multiple items (e.g., both dev and eval sets) can be specified.
 src_bpe_train_text=       # Text file path of bpe training set for source language.
 tgt_bpe_train_text=       # Text file path of bpe training set for target language.
@@ -808,7 +809,8 @@ if ! "${skip_data_prep}"; then
                 --num_outputs ${nj} \
                 --splits ${train_set} ${valid_set} ${test_sets}
 
-            _logdir="${merged_data_base}/tmp/${src_lang}/logdir"
+            _logdir="${dumpdir}/merge_utt/${src_lang}/logdir"
+            mkdir -p "${_logdir}"
             for _path in "${_logdir}"/*; do
                 dset=${_path##*/}
 
@@ -957,16 +959,17 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             --output_dir ${_dir} \
             --model_name ${model_name} ${opts}
     fi
-
 fi
 
 if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ASR inference on the dev/test data."
     # for dset in ${train_set} ${valid_set} ${test_sets}; do
-    for dset in ${train_set}; do
+    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${extra_valid_set} ${test_sets}; do
+        # for dset in ${train_set}; do
         # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
-        if [ "${dset}" = "${valid_set}" ]; then
+        if [ "${dset}" = "${valid_set}" ] | [ "${dset}" = "${extra_valid_set}" ]; then
             _suf="/org"
         elif [ "${dset}" = "${train_set}" ]; then
             _suf="/org"
@@ -974,12 +977,27 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _suf=""
         fi
-        _dsetdir=${data_feats}${_suf}/${dset}
-        _dir="${st_exp}/${src_lang}/decode/${dset}"
-        _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}"
-        # _modeldir="${st_exp}/${src_lang}/${mode}/${peft_method}/checkpoint-3600"
-        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${dset}"
+        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${train_set}/${dset}"
         mkdir -p "${_logdir}"
+        if "${merge_utt}"; then
+            # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
+            if [[ ${dset} == *"_test" ]]; then
+                _suf="/testsets"
+            else
+                _suf=""
+            fi
+            
+            _srcdir=${merged_data_base}/${src_lang}${_suf}
+            _dsetdir=${_logdir}/tmp
+            mkdir -p "${_dsetdir}"
+            pyscripts/utils/generate_wav_raw.py \
+                -i "${_srcdir}/sr.${src_lang}-${src_lang}.${dset}.stm" \
+                -o "${_dsetdir}"
+        else
+            _dsetdir=${data_feats}${_suf}/${dset}
+        fi
+        _dir="${st_exp}/${src_lang}/decode/${dset}"
+        _modeldir="${st_exp}/${src_lang}/${train_set}/${mode}/${peft_method}"
 
         if [ "${dset}" = "${train_set}" ]; then
             ${python} pyscripts/utils/filter_sp.py \
@@ -1009,7 +1027,6 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             opts+=" --dset ${_hf_dset} "
 
             if [ "${peft_method}" != none ]; then
-                # TODO: Fix this
                 opts+=" --peft-model ${_modeldir} "
             fi
 
@@ -1030,7 +1047,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
             #       but it's used only for deciding the sample ids.
             # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
@@ -1052,9 +1069,10 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     log "Stage 9: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${test_sets}; do
+    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
@@ -1067,6 +1085,14 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             opts+=" --arabic true "
         fi
 
+        if "${merge_utt}"; then
+            opts+=" --merge_utt true "
+            opts+=" --data_base_dir ${merged_data_base} "
+            _suf="/merged"
+        else
+            _suf=""
+        fi
+
         cd evaluation
         ${eval_script} \
             --src_lang ${src_lang} \
@@ -1074,7 +1100,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --sclite ${sclite_path} \
             --model_tag ${model_name} \
             --dset "${_dset}" \
-            --score_dir scores_ft/${model_name} \
+            --score_dir scores_ft/${model_name}/${train_set}${_suf} \
             --framework "${framework}" ${opts}
         cd -
     done

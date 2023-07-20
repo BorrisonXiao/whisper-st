@@ -7,3 +7,4 @@ random
 evaluation/scores_*
 pyscripts/utils/__pycache__
 merged_data_base
+evaluation/local/__pycache__

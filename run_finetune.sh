@@ -17,16 +17,17 @@ src_lang=cmn
 # src_lang=all
 tgt_lang=eng
 
-train_set=train-cts
-# train_set=train-all
+# train_set=train-cts
+train_set=train-all
 train_dev=dev1
+extra_dev=dev2
 # debug=true
 debug=false
 ds_config=conf/tuning/ds2.json
 merge_utt=true
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 remove_ark=true
-mode=asr # asr, st, mtl
+mode=asr         # asr, st, mtl
 peft_method=none # none, lora, qlora
 normalize_text=false
 master_port=29500
@@ -51,7 +52,7 @@ if "${merge_utt}"; then
 else
     _suf=
 fi
-save_eval_preds=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_${model}${_suf}/${src_lang}/${train_set}_sp/${mode}/${peft_method}/logdir/eval_preds.txt
+save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${src_lang}/${train_set}_sp/${mode}/${peft_method}/logdir/eval_preds.txt
 
 if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
@@ -74,7 +75,7 @@ test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
 
 framework=huggingface # huggingface, openai
-inference_nj=4 # Number of jobs for decoding, note that each job will use a GPU
+inference_nj=4        # Number of jobs for decoding, note that each job will use a GPU
 # framework=openai # huggingface, openai
 preprocessing_num_proc=16
 on_the_fly_feat=false
@@ -160,6 +161,7 @@ local_data_opts+=$datadir
     --preprocessing_num_proc ${preprocessing_num_proc} \
     --on_the_fly_feat ${on_the_fly_feat} \
     --dev_name ${train_dev} \
+    --extra_valid_set "${extra_dev}" \
     --merge_utt ${merge_utt} \
     --remove_ark ${remove_ark} \
     --normalize_text ${normalize_text} \
