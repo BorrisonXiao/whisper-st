@@ -9,9 +9,9 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-# src_lang=kor
+src_lang=kor
 # src_lang=ara
-src_lang=cmn
+# src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 # src_lang=all
@@ -130,7 +130,7 @@ local_data_opts+=' --datadir '
 local_data_opts+=$datadir
 
 ./finetune.sh \
-    --ngpu 8 \
+    --ngpu 4 \
     --expdir ft_exp \
     --local_data_opts "$local_data_opts" \
     --audio_format "flac.ark" \
@@ -153,7 +153,7 @@ local_data_opts+=$datadir
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
     --stage 7 \
-    --stop_stage 9 \
+    --stop_stage 7 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
     --save_wav true \

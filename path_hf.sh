@@ -19,7 +19,8 @@ export PYTHONIOENCODING=UTF-8
 export NCCL_SOCKET_IFNAME="^lo,docker,virbr,vmnet,vboxnet"
 
 # NOTE(kamo): Source at the last to overwrite the setting
-. local/path.sh
+# NOTE(Cihan): No need to install moses for the whisper finetuning task
+# . local/path.sh
 
 # ml load cuda11.3/toolkit/11.3.1-1
 ml load cuda11.7/toolkit/11.7.0-1
