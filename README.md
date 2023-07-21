@@ -20,7 +20,10 @@ Note that the evaluation recipes are modified slightly to handle different (e.g.
 - Step 1: Clone the 
 
 `ml load intel/mkl/64/2019/5.281`
+
 `ml load gcc/7.2.0`
+
+`./configure --shared --mkl-root=/cm/shared/apps/intel/compilers_and_libraries/2019.5.281/linux/mkl`
 
 # Usage (Evaluation)
 
