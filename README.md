@@ -1,10 +1,10 @@
 # Distributed Whisper Finetuning/Inference
 
-This is a tool for preprocessing data using ESPNet and running distributed whisper inference on the COE grid.
+This is a tool for preprocessing data using ESPNet and running distributed whisper inference and finetuning on the COE grid.
 
 # Installation
 
-This project requires the installation of [ESPNet](https://espnet.github.io/espnet/installation.html).
+This project requires the installation of [ESPNet](https://espnet.github.io/espnet/installation.html) with [Kaldi](https://www.notion.so/How-to-Install-Kaldi-on-CLSP-Grid-c9a371dec29248fab99900ef8b453cbc).
 
 After that, clone this repository to a directory of your choice (doesn't have to be under the ESPNet root directory).
 
@@ -14,9 +14,9 @@ Specify the root directory of ESPNet in the `.bashrc` file, e.g.
 
 Note that the evaluation recipes are modified slightly to handle different (e.g. OOD) datasets and ASR evaluation.
 
-# Usage
+# Usage (Evaluation)
 
-The script `run.sh` is an entry point of the pipeline.
+The script `run.sh` is an entry point of the decoding pipeline.
 
 One can directly run `./run.sh` on the COE grid to perform data preprocessing, or alternatively, it is recommended to specify the steps in `run.sh` to run one step at a time. It is also recommended to skip some unnecessary steps (e.g. data preparation) to save some time and redundant duplication of the data.
 
@@ -29,6 +29,15 @@ and
 ``ln -sfv /home/hltcoe/cxiao/scale23/whisper/recipe/st/data .``
 
 Please let me (Cihan) know if there is anything missing or there is any bug/error.
+
+# Usage (Finetuning and Evaluation)
+The script `run_finetune.sh` and `r*.sh` are the entry points for whisper finetuning.
+
+Stage 1-6 of the script performs data preprocessing (similar to `decode.sh`). It has the additional steps for data stitching (the `merge_utt` flag), which re-merges the utterances in each conversation up to the closest 30s (across speakers).
+
+Stage 7 launches the finetuning job with configurations specified in files under `conf/tuning`.
+
+Stage 8 and 9 runs inference for the finetuned model and evaluates the results.
 
 # Results (Huggingface)
 
