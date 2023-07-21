@@ -26,10 +26,10 @@ The ESPNet installation will create a conda environment by default. However, to 
 
 - Step 3: Configure the script to activate the correct conda environment. Open `utils/activate_hf.sh`, change line 6 from
 
-        . /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/etc/profile.d/conda.sh
+        . /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/etc/profile.d/conda.sh && conda deactivate && conda activate hf
     to
 
-        . </path/to/your/conda/etc>/profile.d/conda.sh
+        . </path/to/your/conda/etc>/profile.d/conda.sh && conda deactivate && conda activate hf
 
 # Kaldi Installation Guide on the COE Grid
 - Step 1: Clone [kaldi](https://github.com/kaldi-asr/kaldi.git) from github.
