@@ -104,7 +104,7 @@ Stage 8 and 9 runs inference for the finetuned model and evaluates the results.
 Before running the script, a few things should be set explicitly:
 - `python_hf=/path/to/your/python`
     
-    This variable, in `run_finetune.sh`, should point to the python interpreter that has the `requirements.txt` installed.
+    This variable, in `run_finetune.sh`, should point to the python interpreter that has the `requirements.txt` installed. We can find out the interpreter by the command `which python`. Note that this should be executed under the environment `cxiao`.
 - `conf/tuning/*.yaml`
 
     If you are trying to launch a new experiment (with new language, peft method, etc.), you need to create a new configuration file. The naming convention is `conf/tuning/${mode}_${model}_${src_lang}_${peft_method}_${train_set}.yaml` as specified in the `run_finetune.sh` script.
