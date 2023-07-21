@@ -115,6 +115,7 @@ Before running the script, a few things should be set explicitly:
 3. Running stage 1-6 might require the installation of moses.
 
         cd ${ESPNET_ROOT}/tools; make moses.done
+4. For some reason the package `humanfriendly` is not automatically included by the `pip freeze` command, so it needs to be installed manually by running `pip install humanfriendly`.
 
 # Results (Huggingface)
 

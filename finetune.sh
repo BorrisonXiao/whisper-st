@@ -783,16 +783,16 @@ if ! "${skip_data_prep}"; then
         ${python} pyscripts/audio/export_wav.py --split-dev --src_lang ${src_lang} --outdir ${stm_exportdir}
 
         if "${merge_utt}"; then
+            _logdir="${dumpdir}/merge_utt/${src_lang}/logdir"
+            mkdir -p "${_logdir}"
             pyscripts/utils/merge_utts.py \
                 --input_base_dir ${stm_exportdir} \
-                --output_base_dir "${merged_data_base}" \
+                --output_base_dir "${_logdir}" \
                 --src_lang ${src_lang} \
                 --tgt_lang ${tgt_lang} \
                 --num_outputs ${nj} \
-                --splits ${train_set} ${valid_set} ${test_sets}
+                --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
 
-            _logdir="${dumpdir}/merge_utt/${src_lang}/logdir"
-            mkdir -p "${_logdir}"
             for _path in "${_logdir}"/*; do
                 dset=${_path##*/}
 
