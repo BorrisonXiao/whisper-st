@@ -118,7 +118,7 @@ def merge_utts(src_lang, tgt_lang, input_base_dir, output_base_dir, splits=SPLIT
                 merged_utts[new_uttid] = (to_merge, cur_dur)
 
         # Write the merged utts to file
-        _logdir = output_base_dir / "tmp" / src_lang / "logdir" / split
+        _logdir = output_base_dir / split
         Path(_logdir).mkdir(parents=True, exist_ok=True)
         # Split the merged utts into num_outputs subsets
         subsets = [{} for _ in range(num_outputs)]

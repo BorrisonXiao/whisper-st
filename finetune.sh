@@ -787,13 +787,13 @@ if ! "${skip_data_prep}"; then
             mkdir -p "${_logdir}"
             pyscripts/utils/merge_utts.py \
                 --input_base_dir ${stm_exportdir} \
-                --output_base_dir "${_logdir}" \
+                --output_base_dir "${_logdir}/tmp" \
                 --src_lang ${src_lang} \
                 --tgt_lang ${tgt_lang} \
                 --num_outputs ${nj} \
                 --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
 
-            for _path in "${_logdir}"/*; do
+            for _path in "${_logdir}/tmp"/*; do
                 dset=${_path##*/}
 
                 # If the merged stm file exists already, don't do it again
@@ -809,7 +809,7 @@ if ! "${skip_data_prep}"; then
                 # Merge the resulted stm files
                 mkdir -p ${merged_data_base}/${src_lang}
                 # There is a system lag in the file system, so wait for a while
-                sleep 3
+                sleep 5
                 # If dset is a test set, i.e. it contains the "_test" substring, add a suffix to the langdir
                 if [[ ${dset} == *"_test" ]]; then
                     _suf="/testsets"
@@ -858,10 +858,6 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
-    # 2. Submit jobs
-    JOBID=$(date +'%Y%m%d%H%M%S')
-    log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
-
     opts=
     if [ "${framework}" == "huggingface" ]; then
         opts+=" --hf_datadir ${hf_datadir} "
@@ -905,9 +901,13 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
 
     if "${precompute_feats}"; then
         # If the feature is already extracted in previous runs, skip this step
-        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.dev.${mode}" ] &&
-            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.train.${mode}" ]; then
-            ${python_hf} ${train_tool} \
+        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.${mode}" ] &&
+            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.${mode}" ]; then
+            # Submit the feature extraction jobs
+            JOBID=$(date +'%Y%m%d%H%M%S')
+            log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+                ${python_hf} ${train_tool} \
                 --feat-extraction \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
@@ -921,6 +921,10 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     if "${fe_only}"; then
         log "Skip training as --fe_only is set to true"
     else
+        # Submit the training jobs
+        JOBID=$(date +'%Y%m%d%H%M%S')
+        log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
+
         hf_cache_dir="${_logdir}/hf_cache"
         mkdir -p "${hf_cache_dir}"
         export HF_DATASETS_CACHE=${hf_cache_dir}
