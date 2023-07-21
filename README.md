@@ -111,7 +111,10 @@ Before running the script, a few things should be set explicitly:
 
 # Known Issues
 1. There is currently a gap between step 6 and step 7, which depends on Deb's script for creating huggingface datasets from stm files. However, since all scale data was already converted into huggingface datasets, step 1-6 no longer needs to be re-run.
-2. You might run into permission issues when running experiments on a new language or training set. This is becase the features weren't created previously and the training script will extract the features and store them to the merged database. The current solution is to contact me (Cihan) to extract the features for you. 
+2. You might run into permission issues when running experiments on a new language or training set. This is becase the features weren't created previously and the training script will extract the features and store them to the merged database. The current solution is to contact me (Cihan) to extract the features for you.
+3. Running stage 1-6 might require the installation of moses.
+
+        cd ${ESPNET_ROOT}/tools; make moses.done
 
 # Results (Huggingface)
 
