@@ -4,7 +4,7 @@ This is a tool for preprocessing data using ESPNet and running distributed whisp
 
 # Installation
 
-This project requires the installation [ESPNet](https://espnet.github.io/espnet/installation.html).
+This project requires the installation of [ESPNet](https://espnet.github.io/espnet/installation.html).
 
 After that, clone this repository to a directory of your choice (doesn't have to be under the ESPNet root directory).
 

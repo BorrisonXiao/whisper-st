@@ -49,7 +49,6 @@ hf_datadir=              # Directory to the hugging face dataset.
 mode=asr                 # asr, st, mtl
 preprocessing_num_proc=4 # Number of parallel jobs in preprocessing
 resume_from_checkpoint=  # Resume from checkpoint path
-load_model_from_path=    # Load model from path
 peft_method=none         # none, lora, qlora
 on_the_fly_feat=false    # Whether to generate features on the fly
 debug=false              # Whether to use debug mode
@@ -84,7 +83,6 @@ blank="<blank>"     # CTC blank symbol
 sos_eos="<sos/eos>" # sos and eos symbole
 token_joint=false   # whether to use a single bpe system for both source and target languages
 src_case=lc.rm
-src_token_type=bpe                    # Tokenization type (char or bpe) for source languages.
 src_nbpe=30                           # The number of BPE vocabulary for source language.
 src_bpemode=unigram                   # Mode of BPE for source language (unigram or bpe).
 src_bpe_input_sentence_size=100000000 # Size of input sentence for BPE for source language.
@@ -210,7 +208,6 @@ Options:
     --sos_eos                 # sos and eos symbole (default="${sos_eos}").
     --token_joint=false       # Whether to use a single bpe system for both source and target languages.
                               # if set as true, will use tgt_* for processing (default="${token_joint}").
-    --src_token_type=bpe      # Tokenization type (char or bpe) for source languages. (default="${src_token_type}").
     --src_nbpe=30             # The number of BPE vocabulary for source language. (default="${src_nbpe}").
     --src_bpemode=unigram     # Mode of BPE for source language (unigram or bpe). (default="${src_bpemode}").
     --src_bpe_input_sentence_size=100000000 # Size of input sentence for BPE for source language. (default="${src_bpe_input_sentence_size}").
@@ -383,22 +380,6 @@ else
     src_bpeprefix=/home/cxiao7/research/espnet-st/egs2/iwslt22_dialect/st_mbart/pretrained/alt-arabic/speech/amir/competitions/IWSLT/MGB2_8KHz2/data/token_list/bpe_unigram2000/bpe
     src_bpemodel="${src_bpeprefix}".model
     src_bpetoken_list="${src_bpedir}"/tokens.txt
-fi
-# Set token types for src and tgt langs
-if [ $use_src_lang = false ]; then
-    src_token_type=none
-    src_token_list=none
-elif [ "${src_token_type}" = bpe ]; then
-    src_token_list="${src_bpetoken_list}"
-elif [ "${src_token_type}" = char ]; then
-    src_token_list="${src_chartoken_list}"
-    src_bpemodel=none
-elif [ "${src_token_type}" = word ]; then
-    src_token_list="${src_wordtoken_list}"
-    src_bpemodel=none
-else
-    log "Error: not supported --src_token_type '${src_token_type}'"
-    exit 2
 fi
 if [ "${tgt_token_type}" = bpe ]; then
     tgt_token_list="${tgt_bpetoken_list}"
@@ -977,7 +958,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _suf=""
         fi
-        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${train_set}/${dset}"
+        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${train_set}/${dset}/${peft_method}"
         mkdir -p "${_logdir}"
         if "${merge_utt}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -996,7 +977,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _dsetdir=${data_feats}${_suf}/${dset}
         fi
-        _dir="${st_exp}/${src_lang}/decode/${dset}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}/${mode}/${peft_method}"
         _modeldir="${st_exp}/${src_lang}/${train_set}/${mode}/${peft_method}"
 
         if [ "${dset}" = "${train_set}" ]; then
@@ -1069,14 +1050,14 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     log "Stage 9: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+        for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
-        _dir="${st_exp}/${src_lang}/decode/${dset}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}/${mode}/${peft_method}"
         _asr_hyp="${PWD}/${_dir}/text"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 
@@ -1090,8 +1071,11 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             opts+=" --data_base_dir ${merged_data_base} "
             _suf="/merged"
         else
-            _suf=""
+            _suf="/org"
         fi
+
+        # Placeholder for later experiments
+        _suf2="_merged"
 
         cd evaluation
         ${eval_script} \
@@ -1100,7 +1084,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --sclite ${sclite_path} \
             --model_tag ${model_name} \
             --dset "${_dset}" \
-            --score_dir scores_ft/${model_name}/${train_set}${_suf} \
+            --score_dir scores_ft/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2} \
             --framework "${framework}" ${opts}
         cd -
     done

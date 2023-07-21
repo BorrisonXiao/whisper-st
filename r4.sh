@@ -11,14 +11,14 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-src_lang=cmn
+# src_lang=cmn
 # src_lang=spa
-# src_lang=rus
+src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
-train_set=train-cts
-# train_set=train-all
+# train_set=train-cts
+train_set=train-all
 train_dev=dev1
 extra_dev=dev2
 # debug=true
@@ -40,8 +40,8 @@ if "${debug}"; then
     st_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
 else
-    model=medium # base, large, large-v2 etc.
-    st_config=conf/tuning/finetune_${mode}_whisper_${model}_${src_lang}_${peft_method}.yaml
+    model=large-v2 # base, large, large-v2 etc.
+    st_config=conf/tuning/${mode}_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
@@ -134,7 +134,6 @@ local_data_opts+=$datadir
     --st_config ${st_config} \
     --src_lang ${src_lang} \
     --tgt_lang ${tgt_lang} \
-    --src_token_type "bpe" \
     --tgt_token_type "bpe" \
     --src_case ${src_case} \
     --tgt_case ${tgt_case} \

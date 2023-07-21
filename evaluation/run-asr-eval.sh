@@ -105,7 +105,7 @@ _prefix=
 if [ "${framework}" == "huggingface" ]; then
     _prefix+="hf_"
 fi
-test_score_dir=${score_dir}/asr/${_prefix}${model_tag}_${testset}_${src_lang}_${settype}
+test_score_dir=${score_dir}/${testset}
 mkdir -p "${test_score_dir}/data"
 
 if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then

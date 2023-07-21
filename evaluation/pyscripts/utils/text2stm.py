@@ -37,17 +37,8 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev", merge_utt=False
 
     def stm2uttid(stm):
         # Reverse construction of uttid from stm
-        splits = stm.split()
-        fpath = Path(splits[0])
-        basename = fpath.stem
-        channel = splits[1]
-        spkid = splits[2]
-        start = round(float(splits[3]) * 100)
-        end = round(float(splits[4]) * 100)
         stm_utt = parse_StmUtterance(stm)
-        # breakpoint()
         return stm_utt.utterance_id(stereo=True)
-        # return f"{spkid}-{basename}-{channel}_{start:08d}_{end:08d}"
 
     # Step 1: Read the text file
     text_dict = {}
