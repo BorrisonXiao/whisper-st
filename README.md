@@ -14,6 +14,14 @@ Specify the root directory of ESPNet in the `.bashrc` file, e.g.
 
 Note that the evaluation recipes are modified slightly to handle different (e.g. OOD) datasets and ASR evaluation.
 
+# TODO: Two pythons
+
+# TODO: Kaldi Installation Guide on the COE Grid
+- Step 1: Clone the 
+
+`ml load intel/mkl/64/2019/5.281`
+`ml load gcc/7.2.0`
+
 # Usage (Evaluation)
 
 The script `run.sh` is an entry point of the decoding pipeline.
