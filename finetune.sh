@@ -62,6 +62,7 @@ merged_data_base=        # Base directory for merged data
 remove_ark=false         # Whether to remove ark files after merging
 normalize_text=false     # Whether to normalize text before training and during validation
 python_hf=python3        # Specify python to execute hugging face commands.
+fe_only=false            # Whether to do feature extraction only
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -917,32 +918,36 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         fi
     fi
 
-    hf_cache_dir="${_logdir}/hf_cache"
-    mkdir -p "${hf_cache_dir}"
-    export HF_DATASETS_CACHE=${hf_cache_dir}
-
-    if "${debug}"; then
-        ${python_hf} ${train_tool} \
-            --train-set ${train_set} \
-            --src-lang ${src_lang} \
-            --tgt-lang ${tgt_lang} \
-            --output_dir ${_dir} \
-            --model_name ${model_name} ${opts}
+    if "${fe_only}"; then
+        log "Skip training as --fe_only is set to true"
     else
-        # For some reason the node r9n01 is much faster than the other nodes
-        # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-        #       but it's used only for deciding the sample ids.
-        # shellcheck disable=SC2046,SC2086
-        # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-        # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-        ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-            ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
-            ${train_tool} \
-            --train-set ${train_set} \
-            --src-lang ${src_lang} \
-            --tgt-lang ${tgt_lang} \
-            --output_dir ${_dir} \
-            --model_name ${model_name} ${opts}
+        hf_cache_dir="${_logdir}/hf_cache"
+        mkdir -p "${hf_cache_dir}"
+        export HF_DATASETS_CACHE=${hf_cache_dir}
+
+        if "${debug}"; then
+            ${python_hf} ${train_tool} \
+                --train-set ${train_set} \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_dir} \
+                --model_name ${model_name} ${opts}
+        else
+            # For some reason the node r9n01 is much faster than the other nodes
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+                ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
+                ${train_tool} \
+                --train-set ${train_set} \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_dir} \
+                --model_name ${model_name} ${opts}
+        fi
     fi
 fi
 
