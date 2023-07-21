@@ -101,10 +101,10 @@ Stage 7 launches the finetuning job with configurations specified in files under
 
 Stage 8 and 9 runs inference for the finetuned model and evaluates the results.
 
-Before running the script, a few variables should be set explicitly:
+Before running the script, a few things should be set explicitly:
 - `python_hf=/path/to/your/python`
     
-    This variable should point to the python interpreter that has the `requirements.txt` installed.
+    This variable, in `run_finetune.sh`, should point to the python interpreter that has the `requirements.txt` installed.
 - `conf/tuning/*.yaml`
 
     If you are trying to launch a new experiment (with new language, peft method, etc.), you need to create a new configuration file. The naming convention is `conf/tuning/${mode}_${model}_${src_lang}_${peft_method}_${train_set}.yaml` as specified in the `run_finetune.sh` script.
