@@ -917,6 +917,10 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         fi
     fi
 
+    hf_cache_dir="${_logdir}/hf_cache"
+    mkdir -p "${hf_cache_dir}"
+    export HF_DATASETS_CACHE=${hf_cache_dir}
+
     if "${debug}"; then
         ${python_hf} ${train_tool} \
             --train-set ${train_set} \
@@ -946,7 +950,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ASR inference on the dev/test data."
     # for dset in ${train_set} ${valid_set} ${test_sets}; do
     for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-    # for dset in ${extra_valid_set} ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${train_set}; do
         # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
@@ -967,7 +971,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             else
                 _suf=""
             fi
-            
+
             _srcdir=${merged_data_base}/${src_lang}${_suf}
             _dsetdir=${_logdir}/tmp
             mkdir -p "${_dsetdir}"
@@ -1051,7 +1055,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
 
     # Note that we assume the evaluation code is available in the path
     # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        for dset in ${valid_set}; do
+    for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"

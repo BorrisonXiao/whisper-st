@@ -14,16 +14,53 @@ Specify the root directory of ESPNet in the `.bashrc` file, e.g.
 
 Note that the evaluation recipes are modified slightly to handle different (e.g. OOD) datasets and ASR evaluation.
 
-# TODO: Two pythons
+# Python Environment Setup
+The ESPNet installation will create a conda environment by default. However, to avoid overwriting ESPNet packages, we need to create a new environment and install the `requirements.txt` there, which includes the dependencies for finetuning models under the huggingface framework.
+- Step 1: Create a new conda environment (the name of the environment is set to `cxiao` for disambiguation):
 
-# TODO: Kaldi Installation Guide on the COE Grid
-- Step 1: Clone the 
+        conda create -n cxiao python=3.9
 
-`ml load intel/mkl/64/2019/5.281`
+- Step 2: Activate the environment and install the packages in `requirements.txt`:
 
-`ml load gcc/7.2.0`
+        conda activate cxiao; pip install -r requirements.txt
 
-`./configure --shared --mkl-root=/cm/shared/apps/intel/compilers_and_libraries/2019.5.281/linux/mkl`
+# Kaldi Installation Guide on the COE Grid
+- Step 1: Clone [kaldi](https://github.com/kaldi-asr/kaldi.git) from github.
+- Step 2: Load the necessary modules on the Grid:
+
+        ml load intel/mkl/64/2019/5.281
+        ml load gcc/7.2.0
+- Step 3: Go to the `tools` subdirectory:
+
+        cd tools
+
+- Step 4: Change line 95 of the `Makefile` from
+
+        $(WGET) -nv -T 10 -t 1 http://www.openfst.org/twiki/pub/FST/FstDownload/openfst-$(OPENFST_VERSION).tar.gz || \
+    to
+    
+        $(WGET) --no-check-certificate -nv -T 10 -t 1 http://www.openfst.org/twiki/pub/FST/FstDownload/openfst-$(OPENFST_VERSION).tar.gz || \
+    to ignore the certificate check for `www.openfst.org`.
+
+- Step 5: Run the installation:
+
+        make -j 8
+
+- Step 6: Go to the `src` subdirectory under the kaldi root directory:
+
+        cd ../src
+
+- Step 7: Run the configuration using the loaded `mkl` module:
+
+        ./configure --shared --mkl-root=/cm/shared/apps/intel/compilers_and_libraries/2019.5.281/linux/mkl
+
+- Step 8: Run the final installation step:
+
+        make -j clean; make -j 8
+
+- Step 9: Link the installed kaldi to ESPNet's `tools` directory. To run this, first go to the ESPNet's `tools` directory, e.g. `cd espnet/tools`, and simply run the command:
+
+        ln -s /path/to/kaldi .
 
 TODO: Change the `activate_hf.sh`, where conda points to the right place.
 
