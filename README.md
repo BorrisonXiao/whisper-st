@@ -25,6 +25,8 @@ Note that the evaluation recipes are modified slightly to handle different (e.g.
 
 `./configure --shared --mkl-root=/cm/shared/apps/intel/compilers_and_libraries/2019.5.281/linux/mkl`
 
+TODO: Change the `activate_hf.sh`, where conda points to the right place.
+
 # Usage (Evaluation)
 
 The script `run.sh` is an entry point of the decoding pipeline.
