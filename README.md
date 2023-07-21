@@ -24,6 +24,13 @@ The ESPNet installation will create a conda environment by default. However, to 
 
         conda activate cxiao; pip install -r requirements.txt
 
+- Step 3: Configure the script to activate the correct conda environment. Open `utils/activate_hf.sh`, change line 6 from
+
+        . /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/etc/profile.d/conda.sh
+    to
+
+        . </path/to/your/conda/etc>/profile.d/conda.sh
+
 # Kaldi Installation Guide on the COE Grid
 - Step 1: Clone [kaldi](https://github.com/kaldi-asr/kaldi.git) from github.
 - Step 2: Load the necessary modules on the Grid:
@@ -62,8 +69,6 @@ The ESPNet installation will create a conda environment by default. However, to 
 
         ln -s /path/to/kaldi .
 
-TODO: Change the `activate_hf.sh`, where conda points to the right place.
-
 # Usage (Evaluation)
 
 The script `run.sh` is an entry point of the decoding pipeline.
@@ -88,6 +93,18 @@ Stage 1-6 of the script performs data preprocessing (similar to `decode.sh`). It
 Stage 7 launches the finetuning job with configurations specified in files under `conf/tuning`.
 
 Stage 8 and 9 runs inference for the finetuned model and evaluates the results.
+
+Before running the script, a few variables should be set explicitly:
+- `python_hf=/path/to/your/python`
+    
+    This variable should point to the python interpreter that has the `requirements.txt` installed.
+- `conf/tuning/*.yaml`
+
+    If you are trying to launch a new experiment (with new language, peft method, etc.), you need to create a new configuration file. The naming convention is `conf/tuning/${mode}_${model}_${src_lang}_${peft_method}_${train_set}.yaml` as specified in the `run_finetune.sh` script.
+
+# Known Issues
+1. There is currently a gap between step 6 and step 7, which depends on Deb's script for creating huggingface datasets from stm files. However, since all scale data was already converted into huggingface datasets, step 1-6 no longer needs to be re-run.
+2. You might run into permission issues when running experiments on a new language or training set. This is becase the features weren't created previously and the training script will extract the features and store them to the merged database. The current solution is to contact me (Cihan) to extract the features for you. 
 
 # Results (Huggingface)
 
