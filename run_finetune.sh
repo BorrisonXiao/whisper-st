@@ -51,7 +51,7 @@ else
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    resume_from_checkpoint=
+    resume_from_checkpoint="/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/kor/train-all_sp/asr/lora/checkpoint-32400"
 fi
 
 if "${merge_utt}"; then
@@ -151,7 +151,7 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 7 \
+    --stage 8 \
     --stop_stage 9 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \

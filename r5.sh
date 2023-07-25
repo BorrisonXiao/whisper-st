@@ -9,9 +9,9 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-src_lang=kor
+# src_lang=kor
 # src_lang=ara
-# src_lang=cmn
+src_lang=cmn
 # src_lang=spa
 # src_lang=rus
 # src_lang=all

@@ -127,6 +127,7 @@ def prepare_dataset(
                 text = std(batch["text"]).strip(
                 ) if normalize_text else batch["text"]
                 batch["labels"] = processor.tokenizer(text).input_ids
+                batch["labels_length"] = len(batch["labels"])
                 return batch
 
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
@@ -135,6 +136,16 @@ def prepare_dataset(
                                       num_proc=preprocessing_num_proc,
                                       remove_columns=col_names,
                                       desc="Preprocessing dataset")
+            # Filter out utterances whose token length exceeds 448
+            max_label_length = 448  # 448 is the max length of the label sequence
+
+            def filter_labels(labels_length):
+                """Filter label sequences longer than max length (448)"""
+                return labels_length < max_label_length
+
+            processed_dset = processed_dset.filter(filter_labels, input_columns=[
+                                                   "labels_length"])
+
             if local_rank in [-1, 0] and save_feature_dir is not None:
                 if (save_feature_dir / f"{lang}.{dset_type}.{mode}").exists():
                     logging.warning(
@@ -348,11 +359,13 @@ def finetune(
             pred_ids[:, :4], skip_special_tokens=False)
         label_str = processor.tokenizer.batch_decode(
             label_ids, skip_special_tokens=True)
-        
+
         # Perform the traditional-to-simplified conversion for Chinese anyways
         if src_lang == "cmn":
-            pred_str = [chinese_converter.to_simplified(char) for char in pred_str]
-            label_str = [chinese_converter.to_simplified(char) for char in label_str]
+            pred_str = [chinese_converter.to_simplified(
+                char) for char in pred_str]
+            label_str = [chinese_converter.to_simplified(
+                char) for char in label_str]
 
         if normalize_eval:
             std = BasicTextNormalizer()

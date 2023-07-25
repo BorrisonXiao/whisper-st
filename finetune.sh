@@ -901,7 +901,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
 
     if "${precompute_feats}"; then
         # If the feature is already extracted in previous runs, skip this step
-        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.${mode}" ] &&
+        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.${mode}" ] || \
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.${mode}" ]; then
             # Submit the feature extraction jobs
             JOBID=$(date +'%Y%m%d%H%M%S')
@@ -1063,8 +1063,8 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     log "Stage 9: Run evaluation on the ASR decoded data."
 
     # Note that we assume the evaluation code is available in the path
-    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-    for dset in ${valid_set}; do
+    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"
