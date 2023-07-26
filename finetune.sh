@@ -46,7 +46,6 @@ python=python3           # Specify python to execute espnet commands.
 model_name=base          # Model name, e.g. "base", "large", etc.
 framework=huggingface    # huggingface, openai
 hf_datadir=              # Directory to the hugging face dataset.
-mode=asr                 # asr, st, mtl
 preprocessing_num_proc=4 # Number of parallel jobs in preprocessing
 resume_from_checkpoint=  # Resume from checkpoint path
 peft_method=none         # none, lora, qlora
@@ -55,7 +54,8 @@ debug=false              # Whether to use debug mode
 dev_name=dev             # Name of the dev set, e.g. dev, dev1, dev2
 precompute_feats=true    # Whether to precompute features (useful for multi-gpu training)
 ds_config=               # Path to the deepspeed config file
-save_eval_preds=         # Path to store the evaluation predictions for analysis
+asr_save_eval_preds=     # Path to store the asr evaluation predictions for analysis
+st_save_eval_preds=      # Path to store the st evaluation predictions for analysis
 master_port=29500        # Port for distributed training
 merge_utt=false          # Whether to merge utterances to the closest 30s for training and inference
 merged_data_base=        # Base directory for merged data
@@ -63,6 +63,7 @@ remove_ark=false         # Whether to remove ark files after merging
 normalize_text=false     # Whether to normalize text before training and during validation
 python_hf=python3        # Specify python to execute hugging face commands.
 fe_only=false            # Whether to do feature extraction only
+asr_config=              # Config for asr model training.
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -853,8 +854,8 @@ if [ -n "${speed_perturb_factors}" ] && ! echo "${train_set}" | grep -q "_sp"; t
 fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    log "Stage 7: Run finetuning on the training data"
-    _dir="${st_exp}/${src_lang}/${train_set}/${mode}/${peft_method}"
+    log "Stage 7: Run ASR finetuning on the training data"
+    _dir="${st_exp}/${src_lang}/${train_set}/asr/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
@@ -864,8 +865,8 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
         opts+=" --dev-name ${dev_name} "
 
-        if [ -n "${st_config}" ]; then
-            opts+=" --config ${st_config} "
+        if [ -n "${asr_config}" ]; then
+            opts+=" --config ${asr_config} "
         fi
 
         if [ "${peft_method}" != none ]; then
@@ -895,14 +896,14 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     if [ -n "${ds_config}" ]; then
         opts+=" --deepspeed ${ds_config} "
     fi
-    if [ -n "${save_eval_preds}" ]; then
-        opts+=" --save-eval-preds ${save_eval_preds} "
+    if [ -n "${asr_save_eval_preds}" ]; then
+        opts+=" --save-eval-preds ${asr_save_eval_preds} "
     fi
 
     if "${precompute_feats}"; then
         # If the feature is already extracted in previous runs, skip this step
-        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.${mode}" ] || \
-            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.${mode}" ]; then
+        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr" ] ||
+            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.asr" ]; then
             # Submit the feature extraction jobs
             JOBID=$(date +'%Y%m%d%H%M%S')
             log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
@@ -911,7 +912,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
                 --feat-extraction \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
+                --tgt-lang ${src_lang} \
                 --model_name ${model_name} ${opts}
         else
             log "Skip feature extraction as the features are already extracted"
@@ -925,15 +926,11 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         JOBID=$(date +'%Y%m%d%H%M%S')
         log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
 
-        hf_cache_dir="${_logdir}/hf_cache"
-        mkdir -p "${hf_cache_dir}"
-        export HF_DATASETS_CACHE=${hf_cache_dir}
-
         if "${debug}"; then
             ${python_hf} ${train_tool} \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
+                --tgt-lang ${src_lang} \
                 --output_dir ${_dir} \
                 --model_name ${model_name} ${opts}
         else
@@ -948,7 +945,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
                 ${train_tool} \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
+                --tgt-lang ${src_lang} \
                 --output_dir ${_dir} \
                 --model_name ${model_name} ${opts}
         fi
@@ -990,8 +987,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _dsetdir=${data_feats}${_suf}/${dset}
         fi
-        _dir="${st_exp}/${src_lang}/decode/${dset}/${mode}/${peft_method}"
-        _modeldir="${st_exp}/${src_lang}/${train_set}/${mode}/${peft_method}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}/asr/${peft_method}"
+        _modeldir="${st_exp}/${src_lang}/${train_set}/asr/${peft_method}"
 
         if [ "${dset}" = "${train_set}" ]; then
             ${python} pyscripts/utils/filter_sp.py \
@@ -1033,7 +1030,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             ${inference_tool} \
                 --keyfile ${_logdir}/decode.1.scp \
                 --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
+                --tgt-lang ${src_lang} \
                 --output_dir ${_logdir}/output.1 \
                 --pretrained-model ${_modeldir} \
                 --model_name ${model_name} ${opts}
@@ -1045,7 +1042,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
+                --tgt-lang ${src_lang} \
                 --output_dir ${_logdir}/output.JOB \
                 --pretrained-model ${_modeldir} \
                 --model_name ${model_name} ${opts}
@@ -1064,13 +1061,13 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
 
     # Note that we assume the evaluation code is available in the path
     for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-    # for dset in ${valid_set}; do
+        # for dset in ${valid_set}; do
         # for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
-        _dir="${st_exp}/${src_lang}/decode/${dset}/${mode}/${peft_method}"
+        _dir="${st_exp}/${src_lang}/decode/${dset}/asr/${peft_method}"
         _asr_hyp="${PWD}/${_dir}/text"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 
@@ -1101,6 +1098,105 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --framework "${framework}" ${opts}
         cd -
     done
+fi
+
+if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
+    log "Stage 10: Run ST finetuning on the training data"
+    _dir="${st_exp}/${src_lang}/${train_set}/st/${peft_method}"
+    _logdir="${_dir}/logdir"
+    mkdir -p "${_logdir}"
+
+    opts=" --mode st "
+    if [ "${framework}" == "huggingface" ]; then
+        opts+=" --hf_datadir ${hf_datadir} "
+        opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
+        opts+=" --dev-name ${dev_name} "
+
+        if [ -n "${st_config}" ]; then
+            opts+=" --config ${st_config} "
+        fi
+
+        if [ "${peft_method}" != none ]; then
+            opts+=" --peft_method ${peft_method} "
+        fi
+
+        _feat_type=feats
+        if "${on_the_fly_feat}"; then
+            opts+=" --on-the-fly-feat-extraction "
+            _feat_type=raw
+        fi
+
+        if "${normalize_text}"; then
+            opts+=" --normalize_text "
+        fi
+
+        opts+=" --save_feature_dir ${hf_datadir}/features/${_feat_type} "
+
+        train_tool="pyscripts/utils/hf_whisper_ft.py"
+    else
+        log "Error: not supported --framework ${framework}"
+        exit 2
+    fi
+    if [ -n "${resume_from_checkpoint}" ]; then
+        opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
+    fi
+    if [ -n "${ds_config}" ]; then
+        opts+=" --deepspeed ${ds_config} "
+    fi
+    if [ -n "${st_save_eval_preds}" ]; then
+        opts+=" --save-eval-preds ${st_save_eval_preds} "
+    fi
+
+    if "${precompute_feats}"; then
+        # If the feature is already extracted in previous runs, skip this step
+        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
+            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st" ]; then
+            # Submit the feature extraction jobs
+            JOBID=$(date +'%Y%m%d%H%M%S')
+            log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+                ${python_hf} ${train_tool} \
+                --feat-extraction \
+                --train-set ${train_set} \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --model_name ${model_name} ${opts}
+        else
+            log "Skip feature extraction as the features are already extracted"
+        fi
+    fi
+
+    if "${fe_only}"; then
+        log "Skip training as --fe_only is set to true"
+    else
+        # Submit the training jobs
+        JOBID=$(date +'%Y%m%d%H%M%S')
+        log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
+
+        if "${debug}"; then
+            ${python_hf} ${train_tool} \
+                --train-set ${train_set} \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_dir} \
+                --model_name ${model_name} ${opts}
+        else
+            # For some reason the node r9n01 is much faster than the other nodes
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+                ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
+                ${train_tool} \
+                --train-set ${train_set} \
+                --src-lang ${src_lang} \
+                --tgt-lang ${tgt_lang} \
+                --output_dir ${_dir} \
+                --model_name ${model_name} ${opts}
+        fi
+    fi
 fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"

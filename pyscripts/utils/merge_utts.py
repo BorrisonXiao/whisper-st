@@ -50,6 +50,11 @@ def parse_utt(line):
     elif len(splitted) == 4:
         spkid1, spkid2, root_fname, info = splitted
         spkid = f"{spkid1}-{spkid2}"
+    elif len(splitted) >= 5 and len(splitted[-2]) == 3 and splitted[-2].isnumeric() and len(splitted[-3]) == 3 and splitted[-3].isnumeric():
+        # Spanish OOD training data (europarl)
+        info = splitted[-1]
+        root_fname = f"{splitted[-4]}-{splitted[-3]}-{splitted[-2]}"
+        spkid = "-".join(splitted[:-4])
     else:
         raise ValueError("Invalid line: {}".format(line))
     if prefix is not None:

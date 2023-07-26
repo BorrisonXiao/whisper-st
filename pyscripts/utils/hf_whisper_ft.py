@@ -74,8 +74,19 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                 train_dset_dict[f"{src_lang}_{mode}"] = train_dset
                 val_dset_dict[f"{src_lang}_{mode}"] = val_dset
         elif mode == "st":
-            # For ST, we need only the translation
-            raise NotImplementedError
+            # For ST, we only need the translation
+            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+            # Rename the "translation" column to "text"
+            train_dset = train_dset.rename_column("translation", "text")
+            val_dset = val_dset.rename_column("translation", "text")
+            # Remove the "translation" column
+            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                "audio", "text", "src_lang", "tgt_lang"]])
+            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                "audio", "text", "src_lang", "tgt_lang"]])
+            train_dset_dict[f"{src_lang}_{mode}"] = train_dset
+            val_dset_dict[f"{src_lang}_{mode}"] = val_dset
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -115,7 +126,7 @@ def prepare_dataset(
             if mode == "asr":
                 std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
             else:
-                std = EnglishTextNormalizer()
+                std = EnglishTextNormalizer({})
             processor = WhisperProcessor.from_pretrained(
                 f"openai/whisper-{model_name}", language=LANGS[lang], task="transcribe" if mode == "asr" else "translate")
 
@@ -292,7 +303,6 @@ def feat_extraction(
                                 local_rank=local_rank,
                                 on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                 train=train)
-    # breakpoint()
 
     return _train_dset, _val_dset
 
@@ -341,10 +351,12 @@ def finetune(
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
 
     # Step 5: Define the metric
-    metric = evaluate.load("cer")
+    _peft = peft_method if peft_method is not None else "none"
+    experiment_id = f"{mode}_{model_name}_{src_lang}_{_peft}_{train_set}"
+    metric_cer = evaluate.load("cer", experiment_id=experiment_id)
+    metric_sacrebleu = evaluate.load("sacrebleu", experiment_id=experiment_id)
 
     def compute_metrics(pred, normalize_eval=False):
-        # breakpoint()
         pred_ids = pred.predictions
         label_ids = pred.label_ids
 
@@ -361,14 +373,15 @@ def finetune(
             label_ids, skip_special_tokens=True)
 
         # Perform the traditional-to-simplified conversion for Chinese anyways
-        if src_lang == "cmn":
+        if tgt_lang == "cmn":
             pred_str = [chinese_converter.to_simplified(
                 char) for char in pred_str]
             label_str = [chinese_converter.to_simplified(
                 char) for char in label_str]
 
         if normalize_eval:
-            std = BasicTextNormalizer()
+            std = BasicTextNormalizer() if tgt_lang != "eng" else EnglishTextNormalizer(
+                {})
             pred_str = [std(pred) for pred in pred_str]
             label_str = [std(label) for label in label_str]
             # Filtering step to only evaluate the samples that correspond to non-zero references
@@ -379,15 +392,21 @@ def finetune(
 
         if save_eval_preds is not None:
             with open(save_eval_preds, "a") as f:
-                for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:500]):
+                for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:200]):
                     f.write(f"Ref: {label}\n")
                     f.write(f"Pred: {pred}\n")
                     f.write(f"Prefix: {prefixes[i]}\n\n")
                 print("--------------------------------------------------", file=f)
 
-        cer = metric.compute(predictions=pred_str, references=label_str)
-
-        return {"cer": cer}
+        if src_lang == tgt_lang:
+            # Use CER for ASR training
+            cer = metric_cer.compute(predictions=pred_str, references=label_str)
+            return {"cer": cer}
+        else:
+            # Use sacrebleu for ST training
+            sacrebleu = metric_sacrebleu.compute(
+                predictions=pred_str, references=label_str)
+            return {"sacrebleu": sacrebleu}
 
     # TODO (Cihan): Add parameter overrides
     _args = parse_config(config)

@@ -26,7 +26,7 @@ SECONDS=0
 src_lang=ara
 score_dir=scores # Top directory to store results
 python=python3
-model_tag=base
+cer=false
 sclite=sclite
 hyp_asr=/home/hltcoe/cxiao/scale23/whisper/recipe/st/exp/st_whisper_base/dev/text
 arabic=false
@@ -101,11 +101,11 @@ else
     testset=${dset}
 fi
 
-_prefix=
-if [ "${framework}" == "huggingface" ]; then
-    _prefix+="hf_"
+_suf2=
+if "${cer}"; then
+    _suf2+="_cer"
 fi
-test_score_dir=${score_dir}/${testset}
+test_score_dir=${score_dir}/${testset}${_suf2}
 mkdir -p "${test_score_dir}/data"
 
 if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then
