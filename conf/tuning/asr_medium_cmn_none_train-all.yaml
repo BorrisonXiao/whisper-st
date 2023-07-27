@@ -16,7 +16,7 @@ Seq2SeqTrainingArguments:
   save_strategy: "steps"
   save_steps: 400
   load_best_model_at_end: False
-  save_total_limit: 5
+  save_total_limit: 2
   metric_for_best_model: "cer"
   greater_is_better: False
   remove_unused_columns: False

@@ -1110,7 +1110,7 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
     if [ "${framework}" == "huggingface" ]; then
         opts+=" --hf_datadir ${hf_datadir} "
         opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
-        opts+=" --dev-name ${dev_name} "
+        opts+=" --dev-name ${extra_valid_set} "
 
         if [ -n "${st_config}" ]; then
             opts+=" --config ${st_config} "

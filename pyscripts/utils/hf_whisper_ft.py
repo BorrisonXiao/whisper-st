@@ -406,7 +406,7 @@ def finetune(
             # Use sacrebleu for ST training
             sacrebleu = metric_sacrebleu.compute(
                 predictions=pred_str, references=label_str)
-            return {"sacrebleu": sacrebleu}
+            return {"sacrebleu": sacrebleu['score'], "sacrebleu_info": sacrebleu}
 
     # TODO (Cihan): Add parameter overrides
     _args = parse_config(config)
