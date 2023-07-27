@@ -112,17 +112,19 @@ if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then
     rm "${test_score_dir}/result.lc.rm.txt"
 fi
 
+if "${merge_utt}"; then
+    _opts="--merge-utt"
+    _setsuf="_test"
+else
+    _opts=""
+    _setsuf=".test"
+fi
+
 if [ "${settype}" = "dev" ]; then
     # Convert STM files to text and utt2spk files
     cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.dev.stm"
 else
-    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}_test.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
-fi
-
-if "${merge_utt}"; then
-    _opts="--merge-utt"
-else
-    _opts=""
+    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}${setsuf}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
 fi
 
 # Convert the hypothesis file to STM format

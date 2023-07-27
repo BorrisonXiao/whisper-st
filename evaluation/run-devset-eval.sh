@@ -24,13 +24,15 @@ SECONDS=0
 
 # General options
 src_lang=ara
-score_dir=scores    # Top directory to store results
 python=python3
-model_tag=base
+score_dir=scores # Top directory to store results
+model_tag=base   # Place holder for api consistency
+merge_utt=false
 hyp_mt=
 arabic=false
 dset=dev
 framework=openai
+data_base_dir=/exp/scale23/data/3-way
 
 help_message=$(
     cat <<EOF
@@ -40,7 +42,6 @@ EOF
 
 log "$0 $*"
 
-run_args=$(pyscripts/utils/print_args.py $0 "$@")
 . utils/parse_options.sh
 
 if [ $# -ne 0 ]; then
@@ -59,17 +60,23 @@ if [ "${framework}" == "huggingface" ]; then
     _prefix+="hf_"
 fi
 
-stm_dir=/exp/scale23/data/3-way/${src_lang}
+stm_dir=${data_base_dir}/${src_lang}
 
-test_score_dir=${score_dir}/st/${_prefix}${model_tag}_${devset}_${src_lang}_dev
+test_score_dir=${score_dir}/${devset}
 mkdir -p ${test_score_dir}/data
+
+if "${merge_utt}"; then
+    _opts="--merge-utt"
+else
+    _opts=""
+fi
 
 # Convert the hypothesis file to STM format
 pyscripts/utils/text2stm.py \
     -i "${hyp_mt}" \
     -o "${test_score_dir}/data/_hyp.stm" \
     -r "$stm_dir/st.${src_lang}-eng.${dset}.stm" \
-    --dset ${dset}
+    --dset ${dset} ${_opts}
 
 # Invoke the updated evaluation script
 ./run_scale23_evals.sh \
