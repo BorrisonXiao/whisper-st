@@ -11,14 +11,14 @@ log() {
     echo -e "$(date '+%Y-%m-%dT%H:%M:%S') (${fname}:${BASH_LINENO[0]}:${FUNCNAME[1]}) $*"
 }
 min() {
-  local a b
-  a=$1
-  for b in "$@"; do
-      if [ "${b}" -le "${a}" ]; then
-          a="${b}"
-      fi
-  done
-  echo "${a}"
+    local a b
+    a=$1
+    for b in "$@"; do
+        if [ "${b}" -le "${a}" ]; then
+            a="${b}"
+        fi
+    done
+    echo "${a}"
 }
 SECONDS=0
 
@@ -32,8 +32,10 @@ hyp_asr=
 arabic=false
 python=python3
 sclite=sclite
+cer=false
 
-help_message=$(cat << EOF
+help_message=$(
+    cat <<EOF
 Usage: $0 --score_dir <path_to_dir> --ref_mt <path_to_ref_file> --hyp_mt <path_to_hyp_file>
 
 Options:
@@ -98,36 +100,44 @@ fi
 for input_file in $ref_mt $hyp_mt $ref_asr $hyp_asr; do
 
     case $input_file in
-        $ref_mt)
-            file_copy=ref_mt.stm
-            glm_lang=eng;;
-        $hyp_mt)
-            file_copy=hyp_mt.stm
-            glm_lang=eng;;
-        $ref_asr)
-            file_copy=ref_asr.stm
-            glm_lang=${src_lang};;
-        $hyp_asr)
-            file_copy=hyp_asr.stm
-            glm_lang=${src_lang};;
+    $ref_mt)
+        file_copy=ref_mt.stm
+        glm_lang=eng
+        ;;
+    $hyp_mt)
+        file_copy=hyp_mt.stm
+        glm_lang=eng
+        ;;
+    $ref_asr)
+        file_copy=ref_asr.stm
+        glm_lang=${src_lang}
+        ;;
+    $hyp_asr)
+        file_copy=hyp_asr.stm
+        glm_lang=${src_lang}
+        ;;
     esac
 
     echo "Copying ..." #$input_file into $score_dir/$file_copy"
     cp $input_file $score_dir/$file_copy
 
     echo "Normalize STM times ..." # $score_dir/$file_copy"
-    $python pyscripts/utils/normalize_stm_times.py $score_dir/$file_copy $score_dir/${file_copy}.norm 2> ${score_dir}/normalize.err.log
+    $python pyscripts/utils/normalize_stm_times.py $score_dir/$file_copy $score_dir/${file_copy}.norm 2>${score_dir}/normalize.err.log
 
     echo "Applying GLM rules ..." # to $score_dir/$file_copy"
-    $python pyscripts/utils/apply_glm_rules.py $score_dir/$file_copy.norm utils/glm.${glm_lang} stm $score_dir/${file_copy}.glm 2> ${score_dir}/glm.err.log
+    $python pyscripts/utils/apply_glm_rules.py $score_dir/$file_copy.norm utils/glm.${glm_lang} stm $score_dir/${file_copy}.glm 2>${score_dir}/glm.err.log
 done
 
 # Check if ${run_asr}. Run ASR eval here.
 if [ ${run_asr} == true ]; then
     echo "Running ASR score"
-    echo "ASR results" > ${score_dir}/result.lc.rm.txt
-    $python pyscripts/utils/stm_wer.py $sclite $score_dir/ref_asr.stm.glm $score_dir/hyp_asr.stm.glm $score_dir $arabic_norm >> ${score_dir}/result.lc.rm.txt
-    echo "" >> ${score_dir}/result.lc.rm.txt
+    echo "ASR results" >${score_dir}/result.lc.rm.txt
+    _opts=
+    if "${cer}"; then
+        _opts+=" --cer "
+    fi
+    $python pyscripts/utils/stm_wer.py $sclite $score_dir/ref_asr.stm.glm $score_dir/hyp_asr.stm.glm $score_dir $arabic_norm ${_opts}>>${score_dir}/result.lc.rm.txt
+    echo "" >>${score_dir}/result.lc.rm.txt
 fi
 
 # Check if ${run_mt}. Run MT eval here.
@@ -140,36 +150,38 @@ if [ ${run_mt} == true ]; then
     # Sort STM on both hyp and ref to make sure bitext is aligned and convert to mt format
     for input_file in ref_mt.stm.glm hyp_mt.stm.glm.aligned; do
         case $input_file in
-            "ref_mt.stm.glm")
-                sorted_file=ref.tc.sorted
-                bitext_file=ref.tc;;
-            "hyp_mt.stm.glm.aligned")
-                sorted_file=hyp.tc.sorted
-                bitext_file=hyp.tc;;
+        "ref_mt.stm.glm")
+            sorted_file=ref.tc.sorted
+            bitext_file=ref.tc
+            ;;
+        "hyp_mt.stm.glm.aligned")
+            sorted_file=hyp.tc.sorted
+            bitext_file=hyp.tc
+            ;;
         esac
 
         echo "Sorting input file ... " #$input_file"
-        sort -t ' ' -k1,5 ${score_dir}/${input_file} > ${score_dir}/${sorted_file}
+        sort -t ' ' -k1,5 ${score_dir}/${input_file} >${score_dir}/${sorted_file}
 
         echo "Creating bitext ... " #${score_dir}/${bitext_file} ${score_dir}/${sorted_file}"
-        cut -d' ' -f7- "${score_dir}/${sorted_file}" > "${score_dir}/${bitext_file}"
+        cut -d' ' -f7- "${score_dir}/${sorted_file}" >"${score_dir}/${bitext_file}"
 
     done
     # Clean mt file (remove punctuations, remove non-speech tokens). Lowercase is done via the "-lc" flag on sacrebleu
     for input_type in ref hyp; do
         echo "Removing punctuatons ... " #for ${score_dir}/${input_type}.tc.rm"
-        utils/remove_punctuation.pl < "${score_dir}/${input_type}.tc" > "${score_dir}/${input_type}.tc.rm"
+        utils/remove_punctuation.pl <"${score_dir}/${input_type}.tc" >"${score_dir}/${input_type}.tc.rm"
     done
 
     # Run sacrebleu
-    echo "Case insensitive BLEU result (single-reference)" >> ${score_dir}/result.lc.rm.txt
+    echo "Case insensitive BLEU result (single-reference)" >>${score_dir}/result.lc.rm.txt
     sacrebleu -lc "${score_dir}/ref.tc.rm" \
-            -i "${score_dir}/hyp.tc.rm" \
-            -m bleu chrf ter \
-            -b -w 4 \
-            >> ${score_dir}/result.lc.rm.txt
+        -i "${score_dir}/hyp.tc.rm" \
+        -m bleu chrf ter \
+        -b -w 4 \
+        >>${score_dir}/result.lc.rm.txt
 
-    echo "" >> ${score_dir}/result.lc.rm.txt
+    echo "" >>${score_dir}/result.lc.rm.txt
 
     cat ${score_dir}/result.lc.rm.txt
     #echo "Score summary"

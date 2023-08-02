@@ -62,7 +62,7 @@ fi
 
 stm_dir=${data_base_dir}/${src_lang}
 
-test_score_dir=${score_dir}/${devset}
+test_score_dir=${score_dir}
 mkdir -p ${test_score_dir}/data
 
 if "${merge_utt}"; then

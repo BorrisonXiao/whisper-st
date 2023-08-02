@@ -1,11 +1,11 @@
 Seq2SeqTrainingArguments:
-  per_device_train_batch_size: 5
+  per_device_train_batch_size: 3
   per_device_eval_batch_size: 32
   gradient_accumulation_steps: 1
-  warmup_steps: 800
-  max_steps: 16000
-  learning_rate: 4e-5
-  weight_decay: 2e-2
+  warmup_steps: 1000
+  max_steps: 48000
+  learning_rate: 2e-5
+  weight_decay: 1e-2
   fp16: True
   predict_with_generate: True
   generation_max_length: 128
@@ -17,15 +17,15 @@ Seq2SeqTrainingArguments:
   save_steps: 400
   load_best_model_at_end: False
   save_total_limit: 5
-  metric_for_best_model: "sacrebleu"
-  greater_is_better: True
+  metric_for_best_model: "cer"
+  greater_is_better: False
   remove_unused_columns: False
 
 LoraConfig:
-  r: 48
+  r: 32
   lora_alpha: 64
   lora_dropout: 0.1
-  target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)$|(.*(fc1|fc2).*)"
+  target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)|(.*(fc1|fc2).*)$"
 
 WhisperConfig:
   apply_spec_augment: True

@@ -409,9 +409,13 @@ def main(args):
                 print(f'{ctm[0]} {ctm[1]} {ctm[2]:0.2f} {ctm[3]:0.2f} {ctm[4]} 1.0', file=fp)
     
     cmd = [args.sclite] + f"-r {odir / 'ref.stm'} stm -h {odir / 'hyp.ctm'} ctm -O {args.odir} -o all".split()
+    if args.cer:
+        cmd += ["-c"]
     status = check_call(cmd, shell=False, stderr=DEVNULL, stdout=DEVNULL)
     
     cmd = [args.sclite] + f"-r {odir / 'ref.norm.stm'} stm -h {odir / 'hyp.norm.ctm'} ctm -O {args.odir} -o all".split()
+    if args.cer:
+        cmd += ["-c"]
     status = check_call(cmd, shell=False, stderr=DEVNULL, stdout=DEVNULL)
 
     cmd = f'grep Sum {odir / "hyp.ctm.sys"}'.split()
@@ -430,6 +434,7 @@ if __name__ == "__main__":
         ./utils/stm_wer.py /home/hltcoe/mwiesner/kaldi/tools/sctk/bin/sclite ref.stm hyp.stm scoring_dir 
         """
     )
+    parser.add_argument("--cer", action="store_true")
     parser.add_argument("sclite", help='path to sclite binary')
     parser.add_argument("stm_ref", help='the reference stm file')
     parser.add_argument("stm_hyp", help='the hypothesis stm file')

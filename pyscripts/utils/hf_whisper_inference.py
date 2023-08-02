@@ -30,7 +30,6 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # Load model and processor
-    # TODO: Handle the PEFT model
     if peft_model is not None:
         peft_config = PeftConfig.from_pretrained(peft_model)
         model = WhisperForConditionalGeneration.from_pretrained(

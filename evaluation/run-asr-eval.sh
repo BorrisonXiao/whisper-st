@@ -124,7 +124,7 @@ if [ "${settype}" = "dev" ]; then
     # Convert STM files to text and utt2spk files
     cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.dev.stm"
 else
-    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}${setsuf}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
+    cat $stm_dir/sr.${src_lang}-${src_lang}.${testset}${_setsuf}.stm >"${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.test.stm"
 fi
 
 # Convert the hypothesis file to STM format
@@ -142,4 +142,5 @@ pyscripts/utils/text2stm.py \
     --ref_asr "${test_score_dir}/data/sr.${src_lang}-${src_lang}.${testset}.${settype}.stm" \
     --arabic "${arabic}" \
     --python "${python}" \
+    --cer "${cer}" \
     --sclite "${sclite}"

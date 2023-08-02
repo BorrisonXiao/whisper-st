@@ -68,7 +68,7 @@ if [ "${framework}" == "huggingface" ]; then
 fi
 
 # Hard coded as ASR eval doesn't use this
-test_score_dir=${score_dir}/${testset}
+test_score_dir=${score_dir}
 mkdir -p ${test_score_dir}/data
 
 if "${merge_utt}"; then

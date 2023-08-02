@@ -64,6 +64,7 @@ normalize_text=false     # Whether to normalize text before training and during 
 python_hf=python3        # Specify python to execute hugging face commands.
 fe_only=false            # Whether to do feature extraction only
 asr_config=              # Config for asr model training.
+eval_cer=false           # Whether to evaluate CER
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -562,8 +563,8 @@ if ! "${skip_data_prep}"; then
             # If nothing is need, then format_wav_scp.sh does nothing:
             # i.e. the input file format and rate is same as the output.
 
-            # for dset in "${train_set}" "${valid_set}" ${test_sets}; do
-            for dset in ${train_set}; do
+            for dset in "${train_set}" "${valid_set}" "${test_sets}"; do
+            # for dset in ${train_set}; do
                 if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                     _suf="/org"
                 else
@@ -940,7 +941,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             # shellcheck disable=SC2046,SC2086
             # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
                 ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
                 ${train_tool} \
                 --train-set ${train_set} \
@@ -955,12 +956,12 @@ fi
 if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     log "Stage 8: Run (distributed) ASR inference on the dev/test data."
     # for dset in ${train_set} ${valid_set} ${test_sets}; do
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${train_set}; do
         # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
-        if [ "${dset}" = "${valid_set}" ] | [ "${dset}" = "${extra_valid_set}" ]; then
+        for dset in ${test_sets}; do
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
             _suf="/org"
         elif [ "${dset}" = "${train_set}" ]; then
             _suf="/org"
@@ -1043,7 +1044,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
             #       but it's used only for deciding the sample ids.
             # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
@@ -1084,6 +1085,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
         if [ "${src_lang}" == "ara" ]; then
             opts+=" --arabic true "
         fi
+        opts+=" --cer ${eval_cer} "
 
         if "${merge_utt}"; then
             opts+=" --merge_utt true "
@@ -1101,7 +1103,6 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --src_lang ${src_lang} \
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
-            --model_tag ${model_name} \
             --dset "${_dset}" \
             --score_dir scores_ft/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2} \
             --framework "${framework}" ${opts}
@@ -1159,11 +1160,12 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
     if "${precompute_feats}"; then
         # If the feature is already extracted in previous runs, skip this step
         if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
-            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st" ]; then
+            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
             # Submit the feature extraction jobs
             JOBID=$(date +'%Y%m%d%H%M%S')
+            log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
             log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
                 ${python_hf} ${train_tool} \
                 --feat-extraction \
                 --train-set ${train_set} \
@@ -1196,7 +1198,7 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
             # shellcheck disable=SC2046,SC2086
             # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
                 ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
                 ${train_tool} \
                 --train-set ${train_set} \
@@ -1302,7 +1304,7 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
             # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
             #       but it's used only for deciding the sample ids.
             # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
@@ -1356,7 +1358,7 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
         if "${merge_utt}"; then
             opts+=" --merge_utt true "
             opts+=" --data_base_dir ${merged_data_base} "
-            _suf="/merged"
+            _suf="/merged" # Indicate that the model was trained on merged utterances
         else
             _suf="/org"
         fi
@@ -1370,7 +1372,7 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
             --hyp_mt "${_st_hyp}" \
             --model_tag ${model_name} \
             --dset "${_dset}" \
-            --score_dir scores_ft/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2} \
+            --score_dir scores_ft/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done

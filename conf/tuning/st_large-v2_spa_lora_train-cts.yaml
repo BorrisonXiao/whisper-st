@@ -1,11 +1,11 @@
 Seq2SeqTrainingArguments:
-  per_device_train_batch_size: 5
+  per_device_train_batch_size: 3
   per_device_eval_batch_size: 32
   gradient_accumulation_steps: 1
-  warmup_steps: 800
-  max_steps: 16000
-  learning_rate: 4e-5
-  weight_decay: 2e-2
+  warmup_steps: 1000
+  max_steps: 24000
+  learning_rate: 1e-5
+  weight_decay: 1e-2
   fp16: True
   predict_with_generate: True
   generation_max_length: 128
@@ -25,7 +25,7 @@ LoraConfig:
   r: 48
   lora_alpha: 64
   lora_dropout: 0.1
-  target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)$|(.*(fc1|fc2).*)"
+  target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)|(.*(fc1|fc2).*)$"
 
 WhisperConfig:
   apply_spec_augment: True
