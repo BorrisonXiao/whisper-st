@@ -34,7 +34,7 @@ normalize_text=false           # Whether or not to normalize the text at trainin
 master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 merge_decode=false             # Whether to merge the utterances at decoding time
-fe_only=true                   # Whether to only do feature extraction
+fe_only=false                   # Whether to only do feature extraction
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3

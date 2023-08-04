@@ -1182,17 +1182,26 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
         # If the feature is already extracted in previous runs, skip this step
         if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
-            # Submit the feature extraction jobs
-            JOBID=$(date +'%Y%m%d%H%M%S')
-            log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
-            log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+            if "${debug}"; then
                 ${python_hf} ${train_tool} \
-                --feat-extraction \
-                --train-set ${train_set} \
-                --src-lang ${src_lang} \
-                --tgt-lang ${tgt_lang} \
-                --model_name ${model_name} ${opts}
+                    --feat-extraction \
+                    --train-set ${train_set} \
+                    --src-lang ${src_lang} \
+                    --tgt-lang ${tgt_lang} \
+                    --model_name ${model_name} ${opts}
+            else
+                # Submit the feature extraction jobs
+                JOBID=$(date +'%Y%m%d%H%M%S')
+                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
+                log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
+                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+                    ${python_hf} ${train_tool} \
+                    --feat-extraction \
+                    --train-set ${train_set} \
+                    --src-lang ${src_lang} \
+                    --tgt-lang ${tgt_lang} \
+                    --model_name ${model_name} ${opts}
+            fi
         else
             log "Skip feature extraction as the features are already extracted"
         fi
@@ -1457,9 +1466,9 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
     if [ -n "${ds_config}" ]; then
         opts+=" --deepspeed ${ds_config} "
     fi
-    if [ -n "${st_save_eval_preds}" ]; then
-        opts+=" --save-eval-preds ${st_save_eval_preds}_mtl "
-    fi
+    # if [ -n "${st_save_eval_preds}" ]; then
+    #     opts+=" --save-eval-preds ${st_save_eval_preds} "
+    # fi
 
     if "${precompute_feats}"; then
         # If the feature is already extracted in previous runs, skip this step

@@ -168,7 +168,7 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 10 \
+    --stage 11 \
     --stop_stage 12 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \

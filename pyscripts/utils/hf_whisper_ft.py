@@ -3,7 +3,7 @@
 # Copyright 2023 Johns Hopkins University (Cihan Xiao)
 # -*- coding: utf-8 -*-
 
-from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, Seq2SeqTrainer
+from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, WhisperTrainer
 import argparse
 from pathlib import Path
 from peft import get_peft_model, LoraConfig
@@ -18,6 +18,7 @@ import logging
 import json
 from functools import partial
 import chinese_converter
+import re
 
 LANGS = {
     "ara": "arabic",
@@ -25,15 +26,11 @@ LANGS = {
     "cmn": "chinese",
     "spa": "spanish",
     "rus": "russian",
-    "eng": "english",
 }
 
 
 def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr", dev_name="dev"):
     src_langs = [src_lang] if src_lang != "all" else list(LANGS.keys())
-    if src_lang == "all":
-        # For multilingual training, we need to load all the datasets
-        raise NotImplementedError
     train_dset_dict = {}
     val_dset_dict = {}
     for lang in src_langs:
@@ -56,9 +53,9 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                 "audio", "text", "src_lang", "tgt_lang"]])
             st_val_dset = st_val_dset.remove_columns([col for col in st_val_dset.column_names if col not in [
                 "audio", "text", "src_lang", "tgt_lang"]])
-            train_dset_dict[f"{src_lang}_asr"] = asr_train_dset
-            train_dset_dict[f"{src_lang}_st"] = st_train_dset
-            val_dset_dict[f"{src_lang}_st"] = st_val_dset
+            train_dset_dict[f"{lang}_asr"] = asr_train_dset
+            train_dset_dict[f"{lang}_st"] = st_train_dset
+            val_dset_dict[f"{lang}_st"] = st_val_dset
         elif mode == "asr":
             if lang == "eng":
                 # Using librispeech-100 for debugging
@@ -70,8 +67,8 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                     "audio", "text"]])
                 val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
                     "audio", "text"]])
-                train_dset_dict[f"{src_lang}_{mode}"] = train_dset
-                val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+                train_dset_dict[f"{lang}_{mode}"] = train_dset
+                val_dset_dict[f"{lang}_{mode}"] = val_dset
             else:
                 # For ASR, we only need the transcript
                 train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
@@ -88,8 +85,8 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                 # Not doing this for now due to permission issues.
                 # train_dset = train_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
                 # val_dset = val_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
-                train_dset_dict[f"{src_lang}_{mode}"] = train_dset
-                val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+                train_dset_dict[f"{lang}_{mode}"] = train_dset
+                val_dset_dict[f"{lang}_{mode}"] = val_dset
         elif mode == "st":
             # For ST, we only need the translation
             train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
@@ -102,8 +99,8 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                 "audio", "text", "src_lang", "tgt_lang"]])
             val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
                 "audio", "text", "src_lang", "tgt_lang"]])
-            train_dset_dict[f"{src_lang}_{mode}"] = train_dset
-            val_dset_dict[f"{src_lang}_{mode}"] = val_dset
+            train_dset_dict[f"{lang}_{mode}"] = train_dset
+            val_dset_dict[f"{lang}_{mode}"] = val_dset
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -120,8 +117,10 @@ def prepare_dataset(
         dset_type="train",
         on_the_fly_feat_extraction=False,
         train=True,
+        multilingual=False,
 ):
     processed_dset_list = []
+    processed_dset_dict = {}
     for _lang, dset in dset_dict.items():
         lang, mode = _lang.split("_")
         # If the features are already extracted, load them directly
@@ -134,6 +133,7 @@ def prepare_dataset(
             processed_dset = load_from_disk(
                 save_feature_dir / f"{lang}.{dset_type}.{mode}")
             processed_dset_list.append(processed_dset)
+            processed_dset_dict[_lang] = processed_dset
         else:
             if save_feature_dir is not None:
                 _load_file_dir = save_feature_dir / \
@@ -182,9 +182,12 @@ def prepare_dataset(
                     processed_dset.save_to_disk(
                         save_feature_dir / f"{lang}.{dset_type}.{mode}")
             processed_dset_list.append(processed_dset)
+            processed_dset_dict[_lang] = processed_dset
 
-    # Concatenate all the datasets
-    return concatenate_datasets(processed_dset_list)
+    # Concatenate all the datasets if training and not multilingual
+    if "train" in dset_type or not multilingual:
+        return concatenate_datasets(processed_dset_list) if len(processed_dset_list) > 0 else None
+    return processed_dset_dict if len(processed_dset_list) > 0 else None
 
 
 @dataclass
@@ -300,6 +303,8 @@ def feat_extraction(
         hf_datadir, train_set, src_lang, tgt_lang, mode=mode, dev_name=dev_name)
 
     # Step 2: Feature extraction
+    # TODO (Cihan): Add support for subset multilingual training
+    multilingual = True if src_lang == "all" else False
     _train_dset = prepare_dataset(dset_dict=train_dset_dict,
                                   model_name=model_name,
                                   preprocessing_num_proc=preprocessing_num_proc,
@@ -308,7 +313,9 @@ def feat_extraction(
                                   dset_type=train_set,
                                   local_rank=local_rank,
                                   on_the_fly_feat_extraction=on_the_fly_feat_extraction,
-                                  train=train)
+                                  train=train,
+                                  multilingual=multilingual,
+                                  )
     _val_dset = prepare_dataset(dset_dict=val_dset_dict,
                                 model_name=model_name,
                                 preprocessing_num_proc=preprocessing_num_proc,
@@ -317,8 +324,10 @@ def feat_extraction(
                                 dset_type=dev_name,
                                 local_rank=local_rank,
                                 on_the_fly_feat_extraction=on_the_fly_feat_extraction,
-                                train=train)
-    
+                                train=train,
+                                multilingual=multilingual,
+                                )
+
     return _train_dset, _val_dset
 
 
@@ -388,11 +397,20 @@ def finetune(
             label_ids, skip_special_tokens=True)
 
         # Perform the traditional-to-simplified conversion for Chinese anyways
+        # Also, due to the training set, some normalization is needed for Chinese
         if tgt_lang == "cmn":
             pred_str = [chinese_converter.to_simplified(
                 char) for char in pred_str]
             label_str = [chinese_converter.to_simplified(
                 char) for char in label_str]
+            # Lowercase the English text for Chinese
+            pred_str = [pred.lower() for pred in pred_str]
+            label_str = [label.lower() for label in label_str]
+            # Remove the punctuations in the Chinese text, including only ". ", ", ", "? ", "<O>% "
+            pred_str = [re.sub(r"([.,?]|<O>% )", "", pred)
+                        for pred in pred_str]
+            label_str = [re.sub(r"([.,?]|<O>% )", "", label)
+                         for label in label_str]
 
         if normalize_eval:
             std = BasicTextNormalizer() if tgt_lang != "eng" else EnglishTextNormalizer(
@@ -415,13 +433,14 @@ def finetune(
 
         if src_lang == tgt_lang:
             # Use CER for ASR training
-            cer = metric_cer.compute(predictions=pred_str, references=label_str)
+            cer = metric_cer.compute(
+                predictions=pred_str, references=label_str)
             return {"cer": cer}
         else:
             # Use sacrebleu for ST training
             sacrebleu = metric_sacrebleu.compute(
                 predictions=pred_str, references=label_str)
-            return {"sacrebleu": sacrebleu['score'], "sacrebleu_info": sacrebleu}
+            return {"sacrebleu": sacrebleu['score']}
 
     # TODO (Cihan): Add parameter overrides
     _args = parse_config(config)
@@ -466,8 +485,9 @@ def finetune(
             raise ValueError(f"Unknown PEFT method: {peft_method}")
 
     # TODO: Extend this for multilingual training
-    model.generate = partial(
-        model.generate, language=LANGS[src_lang], task="transcribe" if mode == "asr" else "translate")
+    if src_lang != "all":
+        model.generate = partial(
+            model.generate, language=LANGS[src_lang], task="transcribe" if mode == "asr" else "translate")
 
     # Apply SpecAugment if specified
     if _args.get("WhisperConfig", None) is not None and _args["WhisperConfig"].get("apply_spec_augment", False):
@@ -485,7 +505,7 @@ def finetune(
         model.config.mask_feature_min_masks = _args['WhisperConfig'].get(
             "mask_feature_min_masks", 0)
 
-    trainer = Seq2SeqTrainer(
+    trainer = WhisperTrainer(
         model=model,
         args=training_args,
         train_dataset=_train_dset,
