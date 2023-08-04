@@ -116,6 +116,7 @@ Before running the script, a few things should be set explicitly:
 
         cd ${ESPNET_ROOT}/tools; make moses.done
 4. For some reason the package `humanfriendly` is not automatically included by the `pip freeze` command, so it needs to be installed manually by running `pip install humanfriendly`.
+5. Make sure your `transformers` package is up-to-date, the `WhisperTrainer` contains new features that depends on the forked `transformers` package.
 
 # Results (Huggingface)
 
