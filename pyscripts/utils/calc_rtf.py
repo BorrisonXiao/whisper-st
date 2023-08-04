@@ -8,15 +8,16 @@ import re
 LOGDIR = "/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/logdir"
 LANGS = ["ara", "cmn", "kor", "rus", "spa"]
 TRAIN_SETS = ["train-cts_sp", "train-all_sp"]
+MODES = ["inference_asr", "inference_st"]
 DSET_DUR = {
-    "ara": {"dev1": 3, "dev2": 3.3, "iwslt22_test": 3.6},
-    "cmn": {"dev1": 4, "dev2": 4.5, "bbn_cts_bolt_test": 8.5},
-    "kor": {"dev1": 2.8, "dev2": 2.4, "uhura_test": 3.0},
-    "rus": {"dev1": 6.0, "dev2": 6.5, "uhura_test": 6.1},
-    "spa": {"dev1": 4.6, "dev2": 4.7, "fisher_test": 4.5, "callhome_test": 1.8},
+    "ara": {"dev1": 3, "dev2": 3.3, "iwslt22_test": 3.6, "fleurs": 8.1},
+    "cmn": {"dev1": 4, "dev2": 4.5, "bbn_cts_bolt_test": 8.5, "fleurs": 13.9},
+    "kor": {"dev1": 2.8, "dev2": 2.4, "uhura_test": 3.0, "fleurs": 9.8},
+    "rus": {"dev1": 6.0, "dev2": 6.5, "uhura_test": 6.1, "fleurs": 11.4},
+    "spa": {"dev1": 4.6, "dev2": 4.7, "fisher_test": 4.5, "callhome_test": 1.8, "fleurs": 13.0},
 }
 
-def calc_rtf(logdir: Path):
+def calc_rtf(logdir: Path, langs: list = LANGS, train_sets: list = TRAIN_SETS, modes: list = MODES):
     """
     Compute the real-time-factor (RTF) of a model.
     """
@@ -24,10 +25,9 @@ def calc_rtf(logdir: Path):
     st_avg_time = []
     avg_time_none = []
     avg_time_lora = []
-    for mode in ["inference_asr", "inference_st"]:
-        
-        for lang in LANGS:
-            for train_set in TRAIN_SETS:
+    for mode in modes:
+        for lang in langs:
+            for train_set in train_sets:
                 # If the directory doesn't exist, continue
                 train_set_dir = logdir / mode / lang / train_set
                 if not train_set_dir.exists():
@@ -80,9 +80,13 @@ def calc_rtf(logdir: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--logdir", "-l", type=Path, help="Log directory", default=LOGDIR)
+    parser.add_argument("--langs", "-L", type=str, nargs="+", help="Languages", default=LANGS)
+    parser.add_argument("--train-sets", "-t", type=str, nargs="+", help="Train sets", default=TRAIN_SETS)
+    parser.add_argument("--modes", "-m", type=str, nargs="+", help="Modes", default=MODES)
     args = parser.parse_args()
+    print(args)
 
-    calc_rtf(logdir=args.logdir)
+    calc_rtf(logdir=args.logdir, langs=args.langs, train_sets=args.train_sets, modes=args.modes)
 
 if __name__ == "__main__":
     main()

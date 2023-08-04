@@ -5,17 +5,17 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("input")
-    parser.add_argument("glm")
+    parser.add_argument("input", type=argparse.FileType("r", encoding="utf-8"), default="-")
+    parser.add_argument("glm", type=argparse.FileType("r", encoding="utf-8"))
     parser.add_argument("format", choices=["ctm", "stm"])
-    parser.add_argument("output")
-    parser.add_argument("--keep-all-tokens")
+    parser.add_argument("output", type=argparse.FileType("w", encoding="utf-8"), default="-")
+    parser.add_argument("--keep-all-tokens", action="store_true")
 
     args = parser.parse_args()
 
     word_mappings = {}
     GLM_RE = re.compile(u'^\s?(%?\S+)\s+=>\s+((\S+)\s*((\S+)\s*)?)($|\/|;)', flags=re.UNICODE)
-    with open(args.glm, 'r', encoding='utf-8') as f:
+    with args.glm as f:
         for i, line in enumerate(f):
             if line[:2] == ';;':
                 continue
@@ -32,7 +32,7 @@ def main():
                 # glm might be missing '%' suffix on original word
                 word_mappings[u'%%%s' % orig_word] = mapped_word
 
-    with open(args.input, 'r', encoding='utf-8', errors='ignore') as input_fp, open(args.output, 'w', encoding='utf-8') as output_fp:
+    with args.input as input_fp, args.output as output_fp:
         if args.format == 'ctm':
             for line in input_fp:
                 parts = line.strip().split()
@@ -50,8 +50,8 @@ def main():
                 else:
                     conf = 0.5
 
-                if word in word_mappings:
-                    cleaned_word = word_mappings[word]
+                if word.lower() in word_mappings:
+                    cleaned_word = word_mappings[word.lower()]
                     if cleaned_word.lower() == u'%hesitation':
                         continue
                 elif not args.keep_all_tokens and word[0] == '[' and word[-1] == ']':
@@ -68,7 +68,7 @@ def main():
                 if len(cleaned_word) == 0:
                     continue
 
-                output_fp.write('%s %s %s %s %s %s\n' % (audio_filename, side, start, duration, cleaned_word, conf))
+                print('%s %s %s %s %s %s' % (audio_filename, side, start, duration, cleaned_word, conf), file=output_fp)
 
         elif args.format == 'stm':
             for line in input_fp:
@@ -91,14 +91,19 @@ def main():
                 words = parts[6:]
                 cleaned_words = []
                 for word in words:
+                    # lowercase word and remove some trailing punctuation   
+                    normalized_word = word.lower()
+                    normalized_word = normalized_word.rstrip('.,!')
                     if word[0] == '[' and word[-1] == ']':
                         cleaned_words.append('(' + word + ')')
                     elif word[0] == '-' or word[-1] == '-':
                         cleaned_words.append('(' + word + ')')
                     elif '~' in word:
                         cleaned_words.append(re.sub('~', '', word))
-                    elif word in word_mappings:
-                        cleaned_words.append('(' + word_mappings[word] + ')')
+                    #elif word in word_mappings:
+                    elif normalized_word in word_mappings:   
+                        #cleaned_words.append('(' + word_mappings[word] + ')')
+                        cleaned_words.append('(' + word_mappings[normalized_word] + ')')
                     else:
                         cleaned_words.append(word)
 
@@ -111,7 +116,7 @@ def main():
                 if len(text) == 0:
                     continue
 
-                output_fp.write('%s %s %s %s %s %s %s\n' % (audio_filename, side, speaker_id, start, stop, tags, text))
+                print('%s %s %s %s %s %s %s' % (audio_filename, side, speaker_id, start, stop, tags, text), file=output_fp)
 
 if __name__ == '__main__':
     main()

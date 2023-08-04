@@ -51,6 +51,8 @@ def stm2xml(src_lang, tgt_lang, refdir, outdir):
 
     for _dir in [langdir / "testsets" / "cts", langdir / "testsets" / "ood"]:
         if _dir == langdir / "testsets" / "ood":
+            continue
+            # Skippiong all ood sets as they aren't stitched
             stm_files = list(_dir.glob(f"sr.{src_lang}-{src_lang}.fleurs.test.stm")) + \
                 list(_dir.glob(f"st.{src_lang}-{tgt_lang}.fleurs.test.stm"))
         else:

@@ -26,8 +26,6 @@ SECONDS=0
 sclite_path=/home/hltcoe/cxiao/research/espnet-st/tools/sctk/bin/sclite
 
 # General configuration
-bpe_predefined=false
-src_inference_lm=
 datadir=
 token_listdir=
 stage=1               # Processes starts from the specified stage.

@@ -21,7 +21,7 @@ lang2iter = {
     "spa": 48000,
 }
 
-def _parse_stm_line(l):
+def _parse_stm_line(l, rmws=False):
     '''
         Parse a line of the stm file. The format is 
 
@@ -29,6 +29,7 @@ def _parse_stm_line(l):
 
         In the event that there is not text (it is empty for the segment), then
         we catch that case. 
+        rmws: remove white space if True
     '''
     try:
         path, channel, speaker, start, end, lbl, text = l.strip().split(None, 6)
@@ -37,6 +38,8 @@ def _parse_stm_line(l):
         text = ''
     recoid = path.replace("//", "/")
     text = re.sub(r"\-\-+", "\-", text)
+    if rmws:
+        text = re.sub(r'\s+', '', text)
     return {
         'recoid': recoid,
        'channel': channel,
@@ -55,6 +58,8 @@ def setup_argparse():
     parser.add_argument("-o", "--output", type=FileType("w"), default="-")
     parser.add_argument("-d", "--device", type=str, default="cpu")
     parser.add_argument("-b", "--batch-size", type=int, default=8)
+    parser.add_argument("-f", "--fine-tuned", action="store_true")
+    parser.add_argument("-w", "--remove-whitespace", action="store_true")
     return parser
 
 
@@ -63,7 +68,7 @@ if __name__ == "__main__":
     hyp_stm, ref_stm = {}, {}
     with open(args.input, 'r', encoding='utf-8') as f:
         for l in f:
-            stm = _parse_stm_line(l)
+            stm = _parse_stm_line(l, args.remove_whitespace)
             recoid, channel = stm['recoid'], stm['channel']
             speaker, start, end = stm['speaker'], stm['start'], stm['end']
             hyp_stm[(recoid, channel, speaker, start, end)] = stm['text'] 
@@ -76,10 +81,12 @@ if __name__ == "__main__":
             ref_stm[(recoid, channel, speaker, start, end)] = stm['text'] 
 
     src = long_to_short[args.source]
-    #mt = pipeline(f"translation_{src}_to_en", f"Helsinki-NLP/opus-mt-{src}-en", device=args.device)
-    tokenizer = MarianTokenizer.from_pretrained(f"Helsinki-NLP/opus-mt-{src}-en")
-    mt = pipeline(f"translation_{src}_to_en", model=f"/exp/erippeth/scale_baselines/opus_finetuned/{args.source}/checkpoint-{lang2iter[args.source]}", 
-        tokenizer=tokenizer, device=args.device)
+    if args.fine_tuned: 
+        tokenizer = MarianTokenizer.from_pretrained(f"Helsinki-NLP/opus-mt-{src}-en")
+        mt = pipeline(f"translation_{src}_to_en", model=f"/exp/erippeth/scale_baselines/opus_finetuned/{args.source}/checkpoint-{lang2iter[args.source]}", 
+            tokenizer=tokenizer, device=args.device)
+    else:
+        mt = pipeline(f"translation_{src}_to_en", f"Helsinki-NLP/opus-mt-{src}-en", device=args.device)
     # truncate long examples to model's max_length (200 subword tokens)
     mt.tokenizer.truncation = True
     inputs = [v for k, v in sorted(hyp_stm.items(), key=lambda x: x[0])]

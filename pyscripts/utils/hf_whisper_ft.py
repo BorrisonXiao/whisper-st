@@ -41,7 +41,24 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
             # For multi-task learning, the dataset will be duplicated and concatenated
             # with the other task's dataset. Note that all both the transcript and
             # translation will be named as "text" in the returned dataset.
-            raise NotImplementedError
+            raw_train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            raw_val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+            # Rename the "transcript" column to "text" for the ASR task
+            asr_train_dset = raw_train_dset.rename_column("transcript", "text")
+            # Rename the "translation" column to "text" for the ST task
+            st_train_dset = raw_train_dset.rename_column("translation", "text")
+            st_val_dset = raw_val_dset.rename_column("translation", "text")
+            # Remove the "translation" column for the ASR task
+            asr_train_dset = asr_train_dset.remove_columns([col for col in asr_train_dset.column_names if col not in [
+                "audio", "text", "src_lang", "tgt_lang"]])
+            # Remove the "transcript" column for the ST task
+            st_train_dset = st_train_dset.remove_columns([col for col in st_train_dset.column_names if col not in [
+                "audio", "text", "src_lang", "tgt_lang"]])
+            st_val_dset = st_val_dset.remove_columns([col for col in st_val_dset.column_names if col not in [
+                "audio", "text", "src_lang", "tgt_lang"]])
+            train_dset_dict[f"{src_lang}_asr"] = asr_train_dset
+            train_dset_dict[f"{src_lang}_st"] = st_train_dset
+            val_dset_dict[f"{src_lang}_st"] = st_val_dset
         elif mode == "asr":
             if lang == "eng":
                 # Using librispeech-100 for debugging
@@ -111,7 +128,7 @@ def prepare_dataset(
         if save_feature_dir is not None and (save_feature_dir / f"{lang}.{dset_type}.{mode}").exists():
             if not train:
                 # If feature extraction only, no need to return anything
-                return None
+                continue
             logging.info(
                 f"Found precomputed features, loading from {save_feature_dir / f'{lang}.{dset_type}.{mode}'}")
             processed_dset = load_from_disk(
@@ -208,7 +225,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
             labels = labels[:, 1:]
 
         batch["labels"] = labels
-        # breakpoint()
+
         return batch
 
 
@@ -282,9 +299,7 @@ def feat_extraction(
     train_dset_dict, val_dset_dict = load_train_and_dev_sets(
         hf_datadir, train_set, src_lang, tgt_lang, mode=mode, dev_name=dev_name)
 
-    # Step 2: Data augmentation
-
-    # Step 3: Feature extraction
+    # Step 2: Feature extraction
     _train_dset = prepare_dataset(dset_dict=train_dset_dict,
                                   model_name=model_name,
                                   preprocessing_num_proc=preprocessing_num_proc,
@@ -303,7 +318,7 @@ def feat_extraction(
                                 local_rank=local_rank,
                                 on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                 train=train)
-
+    
     return _train_dset, _val_dset
 
 

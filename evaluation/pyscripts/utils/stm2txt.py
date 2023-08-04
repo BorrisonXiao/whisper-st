@@ -17,6 +17,9 @@ def stm2txt(input_dir, out_dir):
                     continue
                 setting_dir = train_set_dir / setting
                 for dset in os.listdir(setting_dir):
+                    if "fleurs" in dset:
+                        # Skipping fleurs as they aren't stitched
+                        continue
                     dset_dir = setting_dir / dset
                     stm_file = dset_dir / f"hyp_mt.stm"
                     with open(stm_file, "r") as f:
@@ -25,10 +28,10 @@ def stm2txt(input_dir, out_dir):
                     _outdir.mkdir(parents=True, exist_ok=True)
                     with open(_outdir / "hyp_mt.txt", "w") as f:
                         # The lines will be sorted based on the start time and rootfile name
-                        lines = sorted(lines, key=lambda x: int(Path(parse_StmUtterance(x).filename).stem.split("-")[-1].split("_")[1]))
-                        lines = sorted(lines, key=lambda x: Path(parse_StmUtterance(x).filename).stem.split("-")[1])
-                        if "fleurs" in dset:
-                            breakpoint()
+                        lines = sorted(lines, key=lambda x: int(
+                            Path(parse_StmUtterance(x).filename).stem.split("-")[-1].split("_")[1]))
+                        lines = sorted(lines, key=lambda x: Path(
+                            parse_StmUtterance(x).filename).stem.split("-")[1])
                         for line in lines:
                             utt = parse_StmUtterance(line)
                             f.write(utt.transcript + "\n")
