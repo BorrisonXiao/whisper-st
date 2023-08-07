@@ -10,15 +10,15 @@ set -o pipefail
 
 # Change the following according to your experiments
 # src_lang=kor
-src_lang=ara
+# src_lang=ara
 # src_lang=cmn
-# src_lang=spa
+src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
 
-train_set=train-cts
-# train_set=train-all
+# train_set=train-cts
+train_set=train-all
 train_dev=dev1
 extra_dev=dev2
 
@@ -33,6 +33,7 @@ normalize_text=false           # Whether or not to normalize the text at trainin
 master_port=29505              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 merge_decode=false             # Whether to merge the utterances at decoding time
+fe_only=false                  # Whether to only do feature extraction
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
@@ -45,12 +46,13 @@ if "${debug}"; then
     model=large-v2 # base, large, large-v2 etc.
     asr_config=conf/tuning/whisper-debug.yaml
     st_config=conf/tuning/whisper-debug.yaml
+    mtl_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
 else
     model=large-v2 # base, large, large-v2 etc.
     asr_config=conf/tuning/asr_${model}_${src_lang}_${peft_method}_${train_set}.yaml
-    # For now, using the same config for ST
     st_config=conf/tuning/st_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+    mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
@@ -86,11 +88,11 @@ fi
 declare -A testset_dict
 
 testset_dict+=(
-    ["ara"]="iwslt22_test"
-    ["cmn"]="bbn_cts_bolt_test"
-    ["kor"]="uhura_test"
-    ["rus"]="uhura_test"
-    ["spa"]="fisher_test callhome_test")
+    ["ara"]="iwslt22_test fleurs_test"
+    ["cmn"]="bbn_cts_bolt_test fleurs_test"
+    ["kor"]="uhura_test fleurs_test"
+    ["rus"]="uhura_test fleurs_test"
+    ["spa"]="fisher_test callhome_test fleurs_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
@@ -152,6 +154,7 @@ local_data_opts+=$datadir
     --fs ${fs} \
     --st_config ${st_config} \
     --asr_config ${asr_config} \
+    --mtl_config ${mtl_config} \
     --src_lang ${src_lang} \
     --tgt_lang ${tgt_lang} \
     --tgt_token_type "bpe" \
@@ -165,7 +168,7 @@ local_data_opts+=$datadir
     --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
     --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
     --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
-    --stage 11 \
+    --stage 10 \
     --stop_stage 12 \
     --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
@@ -187,4 +190,5 @@ local_data_opts+=$datadir
     --python_hf ${python_hf} \
     --inference_batch_size ${inference_batch_size} \
     --merge_decode ${merge_decode} \
+    --fe_only ${fe_only} \
     --skip_data_prep false ${opts}

@@ -47,6 +47,9 @@ if "${debug}"; then
     asr_config=conf/tuning/whisper-debug.yaml
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
+    if [ -n "${ds_config}" ]; then
+        opts+=" --ds_config ${ds_config} "
+    fi
     resume_from_checkpoint=
 else
     model=large-v2 # base, large, large-v2 etc.

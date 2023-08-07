@@ -1215,7 +1215,8 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
         log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
 
         if "${debug}"; then
-            ${python_hf} ${train_tool} \
+            ${python_hf} -m torch.distributed.launch --nproc_per_node 1 --master_port ${master_port} \
+                ${train_tool} \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
                 --tgt-lang ${tgt_lang} \
@@ -1475,7 +1476,7 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
         if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr" ] ||
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
             [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
-            log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
+            log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
             if "${debug}"; then
                 ${python_hf} ${train_tool} \
                     --feat-extraction \
@@ -1486,7 +1487,7 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
             else
                 # Submit the feature extraction jobs
                 JOBID=$(date +'%Y%m%d%H%M%S')
-                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
+                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
                 log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
                 ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
                     ${python_hf} ${train_tool} \
@@ -1534,69 +1535,224 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
     fi
 fi
 
-# if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
-#     log "Stage 13: Run MWER alignment to un-merge the utterances"
+if [ ${stage} -le 14 ] && [ ${stop_stage} -ge 14 ]; then
+    log "Stage 14: Run (distributed) MTL inference on the dev/test data."
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
 
-#     cd evaluation
-#     ${eval_script} \
-#         --src_lang ${src_lang} \
-#         --hyp_mt "${_st_hyp}" \
-#         --model_tag ${model_name} \
-#         --dset "${_dset}" \
-#         --score_dir scores_ft/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2}/${dset} \
-#         --framework "${framework}" ${opts}
-#     cd -
+    for task in "asr" "st"; do
+        for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+            # for dset in ${extra_valid_set} ${test_sets}; do
+            # for dset in ${train_set}; do
+            # for dset in ${valid_set} ${extra_valid_set}; do
+            # for dset in ${test_sets}; do
+            if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+                _suf="/org"
+            elif [ "${dset}" = "${train_set}" ]; then
+                _suf="/org"
+                dset="${train_set}"
+            else
+                _suf=""
+            fi
+            _logdir="${st_exp}/logdir/inference_mtl/${task}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+            mkdir -p "${_logdir}"
+            if "${merge_decode}"; then
+                # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
+                if [[ ${dset} == *"_test" ]]; then
+                    _suf="/testsets"
+                else
+                    _suf=""
+                fi
 
-#     # Note that we assume the evaluation code is available in the path
-#     for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-#         # for dset in ${valid_set}; do
-#         # for dset in ${test_sets}; do
-#         # for dset in ${extra_valid_set} ${test_sets}; do
-#         # for dset in ${extra_valid_set}; do
-#         log "Running evaluation on ${dset}"
-#         if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
-#             eval_script=run-devset-eval.sh
-#         elif [ "${dset}" = "fleurs_test" ]; then
-#             eval_script=run-ood-eval.sh
-#         else
-#             eval_script=run-testset-eval.sh
-#         fi
+                _srcdir=${merged_data_base}/${src_lang}${_suf}
+                _dsetdir=${_logdir}/tmp
+                mkdir -p "${_dsetdir}"
+                pyscripts/utils/generate_wav_raw.py \
+                    -i "${_srcdir}/st.${src_lang}-${tgt_lang}.${dset}.stm" \
+                    -o "${_dsetdir}"
+            else
+                _dsetdir=${data_feats}${_suf}/${dset}
+                # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
+                if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
+                    mkdir -p "${_dsetdir}"
+                    _orgdir=${data_feats}${_suf}/dev
+                    pyscripts/utils/filter_dev.py \
+                        -i "${_orgdir}/wav_raw.scp" \
+                        -o "${_dsetdir}/wav_raw.scp" \
+                        -r /exp/scale23/data/3-way/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm
+                fi
+            fi
 
-#         _suf2="/org"
-#         if "${merge_utt}"; then
-#             _suf2="/merged"
-#         fi
+            _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/${task}/${peft_method}${train_suf}${decode_suf}"
+            _modeldir="${st_exp}/${src_lang}/${train_set}/mtl/${peft_method}"
 
-#         _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/st/${peft_method}${_suf2}"
-#         _st_hyp="${PWD}/${_dir}/text"
-#         _dset=$(echo "${dset}" | sed 's/_test$//')
+            if [ "${dset}" = "${train_set}" ]; then
+                ${python} pyscripts/utils/filter_sp.py \
+                    -i "${_dsetdir}/wav_raw.scp" \
+                    -o "${_dsetdir}/wav_raw_nosp.scp"
 
-#         opts=
-#         if [ "${src_lang}" == "ara" ]; then
-#             opts+=" --arabic true "
-#         fi
+                key_file=${_dsetdir}/wav_raw_nosp.scp
+            else
+                key_file=${_dsetdir}/wav_raw.scp
+            fi
+            # 1. Split the key file
+            _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
 
-#         if "${merge_utt}"; then
-#             opts+=" --merge_utt true "
-#             opts+=" --data_base_dir ${merged_data_base} "
-#             _suf="/merged" # Indicate that the model was trained on merged utterances
-#         else
-#             _suf="/org"
-#         fi
+            split_scps=""
+            for n in $(seq "${_nj}"); do
+                split_scps+=" ${_logdir}/decode.${n}.scp"
+            done
+            # shellcheck disable=SC2086
+            utils/split_scp.pl "${key_file}" ${split_scps}
 
-#         # TODO: Placeholder for later experiments
-#         _suf2="_merged"
+            # 2. Submit jobs
+            log "Inference started... log: '${_logdir}/decode.*.log'"
 
-#         cd evaluation
-#         ${eval_script} \
-#             --src_lang ${src_lang} \
-#             --hyp_mt "${_st_hyp}" \
-#             --model_tag ${model_name} \
-#             --dset "${_dset}" \
-#             --score_dir scores_ft/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${_suf}${_suf2}/${dset} \
-#             --framework "${framework}" ${opts}
-#         cd -
-#     done
-# fi
+            opts=
+            if [ "${framework}" == "huggingface" ]; then
+                if "${merge_decode}"; then
+                    _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+                else
+                    _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
+                fi
+                opts+=" --dset ${_hf_dset} "
+
+                if [ "${peft_method}" != none ]; then
+                    opts+=" --peft-model ${_modeldir} "
+                fi
+
+                if [ "${task}" == "st" ]; then
+                    opts+=" --task translate "
+                fi
+
+                inference_tool="pyscripts/utils/hf_whisper_inference.py"
+            else
+                inference_tool="pyscripts/utils/whisper_inference.py"
+            fi
+
+            if "${debug}"; then
+                ${inference_tool} \
+                    --keyfile ${_logdir}/decode.1.scp \
+                    --src-lang ${src_lang} \
+                    --tgt-lang ${src_lang} \
+                    --output_dir ${_logdir}/output.1 \
+                    --pretrained-model ${_modeldir} \
+                    --batch-size ${inference_batch_size} \
+                    --model_name ${model_name} ${opts}
+            else
+                # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+                #       but it's used only for deciding the sample ids.
+                # shellcheck disable=SC2046,SC2086
+                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                    ${inference_tool} \
+                    --keyfile ${_logdir}/decode.JOB.scp \
+                    --src-lang ${src_lang} \
+                    --tgt-lang ${src_lang} \
+                    --output_dir ${_logdir}/output.JOB \
+                    --pretrained-model ${_modeldir} \
+                    --batch-size ${inference_batch_size} \
+                    --model_name ${model_name} ${opts}
+            fi
+
+            # 3. Concatenates the output files from each jobs
+            mkdir -p "${_dir}"
+            for i in $(seq "${_nj}"); do
+                cat "${_logdir}/output.${i}/text"
+            done | LC_ALL=C sort -k1 >"${_dir}/text"
+        done
+    done
+fi
+
+if [ ${stage} -le 15 ] && [ ${stop_stage} -ge 15 ]; then
+    log "Stage 15: Run evaluation on the MTL decoded data."
+
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
+
+    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+        # for dset in ${valid_set}; do
+        # for dset in ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
+        log "Running ASR evaluation on ${dset}"
+        eval_script=run-asr-eval.sh
+
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/asr/${peft_method}${train_suf}${decode_suf}"
+        _asr_hyp="${PWD}/${_dir}/text"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
+
+        opts=
+        if [ "${src_lang}" == "ara" ]; then
+            opts+=" --arabic true "
+        fi
+        opts+=" --cer ${eval_cer} "
+
+        if "${merge_decode}"; then
+            opts+=" --merge_utt true "
+            opts+=" --data_base_dir ${merged_data_base} "
+        fi
+
+        cd evaluation
+        ${eval_script} \
+            --src_lang ${src_lang} \
+            --hyp_asr "${_asr_hyp}" \
+            --sclite ${sclite_path} \
+            --dset "${_dset}" \
+            --score_dir scores_ft/mtl/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf} \
+            --framework "${framework}" ${opts}
+        cd -
+    done
+
+    # Note that we assume the evaluation code is available in the path
+    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+        # for dset in ${valid_set}; do
+        # for dset in ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
+        # for dset in ${extra_valid_set}; do
+        log "Running ST evaluation on ${dset}"
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+            eval_script=run-devset-eval.sh
+        elif [ "${dset}" = "fleurs_test" ]; then
+            eval_script=run-ood-eval.sh
+        else
+            eval_script=run-testset-eval.sh
+        fi
+
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/st/${peft_method}${train_suf}${decode_suf}"
+        _st_hyp="${PWD}/${_dir}/text"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
+
+        opts=
+        if [ "${src_lang}" == "ara" ]; then
+            opts+=" --arabic true "
+        fi
+
+        if "${merge_decode}"; then
+            opts+=" --merge_utt true "
+            opts+=" --data_base_dir ${merged_data_base} "
+        fi
+
+        cd evaluation
+        ${eval_script} \
+            --src_lang ${src_lang} \
+            --hyp_mt "${_st_hyp}" \
+            --model_tag ${model_name} \
+            --dset "${_dset}" \
+            --score_dir scores_ft/mtl/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+            --framework "${framework}" ${opts}
+        cd -
+    done
+fi
 
 log "Successfully finished. [elapsed=${SECONDS}s]"
