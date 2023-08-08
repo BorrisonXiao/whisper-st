@@ -105,7 +105,7 @@ _suf2=
 if "${cer}"; then
     _suf2+="_cer"
 fi
-test_score_dir=${score_dir}/${testset}${_suf2}
+test_score_dir=${score_dir}${_suf2}
 mkdir -p "${test_score_dir}/data"
 
 if [ -f "${test_score_dir}/result.lc.rm.txt" ]; then

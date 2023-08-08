@@ -9,3 +9,5 @@ pyscripts/utils/__pycache__
 merged_data_base
 evaluation/local/__pycache__
 export_asr
+logs
+multi_st_decode

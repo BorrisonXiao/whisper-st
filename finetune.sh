@@ -1125,7 +1125,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --dset "${_dset}" \
-            --score_dir scores_ft/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf} \
+            --score_dir scores_ft/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done
@@ -1709,7 +1709,7 @@ if [ ${stage} -le 15 ] && [ ${stop_stage} -ge 15 ]; then
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --dset "${_dset}" \
-            --score_dir scores_ft/mtl/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf} \
+            --score_dir scores_ft/mtl/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done
