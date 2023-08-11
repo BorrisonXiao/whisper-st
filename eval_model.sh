@@ -27,14 +27,17 @@ min() {
 SECONDS=0
 
 _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/st/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
 task=asr
 src_langs=all
+# src_langs="ara cmn rus spa"
+# src_langs="rus spa"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
 outdir=/exp/cxiao/scale23/multi_st_decode
 inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
 inference_batch_size=32
-inference_nj=16
-merge_decode=false
+inference_nj=24
+merge_decode=true
 merge_utt=true
 valid_set=dev1
 extra_valid_set=dev2
@@ -48,8 +51,8 @@ evaldir=evaluation
 scoredir=/exp/cxiao/scale23/scores_multilingual
 sclite_path=sclite
 mtl=false
-eval_cer=false
 debug=false
+eval_cer=false
 stage=2
 stop_stage=2
 
@@ -61,6 +64,7 @@ stop_stage=2
 # Parse the _modeldir to get the train_set and peft_method
 peft_method=${_modeldir##*/}
 _path=${_modeldir%/*}
+train_obj=${_path##*/}
 _path=${_path%/*}
 train_set=${_path##*/}
 _path=${_path%/*}
@@ -74,9 +78,13 @@ if [ "${task}" == "asr" ]; then
     merge_decode=true
 fi
 
+if [[ "${_modeldir}" == *"/mtl/"* ]]; then
+    mtl=true
+fi
+
 _mtlprefix=
 if "${mtl}"; then
-    _mtlprefix=mtl/
+    _mtlprefix=mtl_
 fi
 
 decode_suf="_org"
@@ -118,10 +126,10 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 
         test_sets=${testset_dict[${src_lang}]}
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        for dset in ${valid_set} ${extra_valid_set}; do
-            # for dset in ${test_sets}; do
+        # for dset in ${valid_set} ${extra_valid_set}; do
+            for dset in ${test_sets}; do
             log "Running inference for ${src_lang} ${dset}"
-            _logdir="${logdir}/inference_${task}/${train_lang}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+            _logdir="${logdir}/inference_${_mtlprefix}${task}/${train_lang}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
             mkdir -p "${_logdir}"
 
             if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
@@ -237,6 +245,14 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
     for src_lang in ${src_langs}; do
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+
+        # If the language is kor, set eval_cer to true
+        if [ "${src_lang}" = "kor" ]; then
+            eval_cer=true
+        else
+            eval_cer=false
+        fi
+
         test_sets=${testset_dict[${src_lang}]}
         for dset in ${test_sets}; do
             # for dset in ${valid_set} ${extra_valid_set}; do

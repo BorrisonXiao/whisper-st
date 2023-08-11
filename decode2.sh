@@ -852,11 +852,11 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         decode_suf="_merged"
     fi
     # for dset in ${train_set} ${valid_set} ${test_sets}; do
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${train_set}; do
         # for dset in ${valid_set} ${extra_valid_set}; do
-        # for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
             _suf="/org"
         elif [ "${dset}" = "${train_set}" ]; then
@@ -970,9 +970,9 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
         decode_suf="_merged"
     fi
 
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
@@ -998,7 +998,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --dset "${_dset}" \
-            --score_dir scores_org/asr/hf_whisper_${model_name}/${src_lang}/${decode_suf} \
+            --score_dir scores_org/asr/hf_whisper_${model_name}/${src_lang}/${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done
