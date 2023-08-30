@@ -17,7 +17,8 @@ Seq2SeqTrainingArguments:
   save_steps: 1
   save_total_limit: 5
   load_best_model_at_end: True
-  metric_for_best_model: "sacrebleu"
+  metric_for_best_model: "cer"
+  gradient_checkpointing: True
   greater_is_better: True
   remove_unused_columns: False
 

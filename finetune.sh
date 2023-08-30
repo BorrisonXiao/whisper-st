@@ -704,71 +704,71 @@ if ! "${skip_data_prep}"; then
         fi
     fi
 
-    if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
-        log "Stage 4: Remove long/short $datadir: ${data_feats}/org -> ${data_feats}"
+    # if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
+    #     log "Stage 4: Remove long/short $datadir: ${data_feats}/org -> ${data_feats}"
 
-        # NOTE(kamo): Not applying to test_sets to keep original data
-        # for dset in "${train_set}" "${valid_set}"; do
-        for dset in ${train_set}; do
-            # Copy data dir
-            utils/copy_data_dir.sh --validate_opts --non-print "${data_feats}/org/${dset}" "${data_feats}/${dset}"
-            cp "${data_feats}/org/${dset}/feats_type" "${data_feats}/${dset}/feats_type"
+    #     # NOTE(kamo): Not applying to test_sets to keep original data
+    #     # for dset in "${train_set}" "${valid_set}"; do
+    #     for dset in ${train_set}; do
+    #         # Copy data dir
+    #         utils/copy_data_dir.sh --validate_opts --non-print "${data_feats}/org/${dset}" "${data_feats}/${dset}"
+    #         cp "${data_feats}/org/${dset}/feats_type" "${data_feats}/${dset}/feats_type"
 
-            for utt_extra_file in ${utt_extra_files}; do
-                cp "${data_feats}/org/${dset}/${utt_extra_file}" "${data_feats}/${dset}"
-            done
-            # Remove short utterances
-            _feats_type="$(<${data_feats}/${dset}/feats_type)"
-            if [ "${_feats_type}" = raw ]; then
-                _fs=$(python3 -c "import humanfriendly as h;print(h.parse_size('${fs}'))")
-                _min_length=$(python3 -c "print(int(${min_wav_duration} * ${_fs}))")
-                _max_length=$(python3 -c "print(int(${max_wav_duration} * ${_fs}))")
+    #         for utt_extra_file in ${utt_extra_files}; do
+    #             cp "${data_feats}/org/${dset}/${utt_extra_file}" "${data_feats}/${dset}"
+    #         done
+    #         # Remove short utterances
+    #         _feats_type="$(<${data_feats}/${dset}/feats_type)"
+    #         if [ "${_feats_type}" = raw ]; then
+    #             _fs=$(python3 -c "import humanfriendly as h;print(h.parse_size('${fs}'))")
+    #             _min_length=$(python3 -c "print(int(${min_wav_duration} * ${_fs}))")
+    #             _max_length=$(python3 -c "print(int(${max_wav_duration} * ${_fs}))")
 
-                # utt2num_samples is created by format_wav_scp.sh
-                awk <"${data_feats}/org/${dset}/utt2num_samples" -v min_length="${_min_length}" -v max_length="${_max_length}" \
-                    '{ if ($2 > min_length && $2 < max_length ) print $0; }' \
-                    >"${data_feats}/${dset}/utt2num_samples"
-                utils/filter_scp.pl <"${data_feats}/org/${dset}/wav.scp" "${data_feats}/${dset}/utt2num_samples" \
-                    >"${data_feats}/${dset}/wav.scp"
-            else
-                # Get frame shift in ms from conf/fbank.conf
-                _frame_shift=
-                if [ -f conf/fbank.conf ] && [ "$(grep <conf/fbank.conf -c frame-shift)" -gt 0 ]; then
-                    # Assume using conf/fbank.conf for feature extraction
-                    _frame_shift="$(grep <conf/fbank.conf frame-shift | sed -e 's/[-a-z =]*\([0-9]*\)/\1/g')"
-                fi
-                if [ -z "${_frame_shift}" ]; then
-                    # If not existing, use the default number in Kaldi (=10ms).
-                    # If you are using different number, you have to change the following value manually.
-                    _frame_shift=10
-                fi
+    #             # utt2num_samples is created by format_wav_scp.sh
+    #             awk <"${data_feats}/org/${dset}/utt2num_samples" -v min_length="${_min_length}" -v max_length="${_max_length}" \
+    #                 '{ if ($2 > min_length && $2 < max_length ) print $0; }' \
+    #                 >"${data_feats}/${dset}/utt2num_samples"
+    #             utils/filter_scp.pl <"${data_feats}/org/${dset}/wav.scp" "${data_feats}/${dset}/utt2num_samples" \
+    #                 >"${data_feats}/${dset}/wav.scp"
+    #         else
+    #             # Get frame shift in ms from conf/fbank.conf
+    #             _frame_shift=
+    #             if [ -f conf/fbank.conf ] && [ "$(grep <conf/fbank.conf -c frame-shift)" -gt 0 ]; then
+    #                 # Assume using conf/fbank.conf for feature extraction
+    #                 _frame_shift="$(grep <conf/fbank.conf frame-shift | sed -e 's/[-a-z =]*\([0-9]*\)/\1/g')"
+    #             fi
+    #             if [ -z "${_frame_shift}" ]; then
+    #                 # If not existing, use the default number in Kaldi (=10ms).
+    #                 # If you are using different number, you have to change the following value manually.
+    #                 _frame_shift=10
+    #             fi
 
-                _min_length=$(python3 -c "print(int(${min_wav_duration} / ${_frame_shift} * 1000))")
-                _max_length=$(python3 -c "print(int(${max_wav_duration} / ${_frame_shift} * 1000))")
+    #             _min_length=$(python3 -c "print(int(${min_wav_duration} / ${_frame_shift} * 1000))")
+    #             _max_length=$(python3 -c "print(int(${max_wav_duration} / ${_frame_shift} * 1000))")
 
-                cp "${data_feats}/org/${dset}/feats_dim" "${data_feats}/${dset}/feats_dim"
-                awk <"${data_feats}/org/${dset}/feats_shape" -F, ' { print $1 } ' |
-                    awk -v min_length="${_min_length}" -v max_length="${_max_length}" \
-                        '{ if ($2 > min_length && $2 < max_length) print $0; }' \
-                        >"${data_feats}/${dset}/feats_shape"
-                utils/filter_scp.pl <"${data_feats}/org/${dset}/feats.scp" "${data_feats}/${dset}/feats_shape" \
-                    >"${data_feats}/${dset}/feats.scp"
-            fi
+    #             cp "${data_feats}/org/${dset}/feats_dim" "${data_feats}/${dset}/feats_dim"
+    #             awk <"${data_feats}/org/${dset}/feats_shape" -F, ' { print $1 } ' |
+    #                 awk -v min_length="${_min_length}" -v max_length="${_max_length}" \
+    #                     '{ if ($2 > min_length && $2 < max_length) print $0; }' \
+    #                     >"${data_feats}/${dset}/feats_shape"
+    #             utils/filter_scp.pl <"${data_feats}/org/${dset}/feats.scp" "${data_feats}/${dset}/feats_shape" \
+    #                 >"${data_feats}/${dset}/feats.scp"
+    #         fi
 
-            # Remove empty text
-            for utt_extra_file in ${utt_extra_files}; do
-                awk <"${data_feats}/org/${dset}/${utt_extra_file}" ' { if( NF != 1 ) print $0; } ' >"${data_feats}/${dset}/${utt_extra_file}"
-            done
+    #         # Remove empty text
+    #         for utt_extra_file in ${utt_extra_files}; do
+    #             awk <"${data_feats}/org/${dset}/${utt_extra_file}" ' { if( NF != 1 ) print $0; } ' >"${data_feats}/${dset}/${utt_extra_file}"
+    #         done
 
-            # fix_data_dir.sh leaves only utts which exist in all files
-            utils/fix_data_dir.sh --utt_extra_files "${utt_extra_files}" "${data_feats}/${dset}"
-            for utt_extra_file in ${utt_extra_files}; do
-                python pyscripts/utils/remove_duplicate_keys.py ${data_feats}/${dset}/${utt_extra_file} \
-                    >${data_feats}/${dset}/${utt_extra_file}.tmp
-                mv ${data_feats}/${dset}/${utt_extra_file}.tmp ${data_feats}/${dset}/${utt_extra_file}
-            done
-        done
-    fi
+    #         # fix_data_dir.sh leaves only utts which exist in all files
+    #         utils/fix_data_dir.sh --utt_extra_files "${utt_extra_files}" "${data_feats}/${dset}"
+    #         for utt_extra_file in ${utt_extra_files}; do
+    #             python pyscripts/utils/remove_duplicate_keys.py ${data_feats}/${dset}/${utt_extra_file} \
+    #                 >${data_feats}/${dset}/${utt_extra_file}.tmp
+    #             mv ${data_feats}/${dset}/${utt_extra_file}.tmp ${data_feats}/${dset}/${utt_extra_file}
+    #         done
+    #     done
+    # fi
 
     if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         log "Stage 5: Merge the wav.scp for the raw wav files to be decoded."
@@ -847,6 +847,22 @@ if ! "${skip_data_prep}"; then
         fi
     fi
 
+    if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+        log "Stage 7: Convert the data into huggingface datasets"
+
+        stm_exportdir=${dumpdir}/export
+        if "${merge_utt}"; then
+            src_dir=${merged_data_base}
+        else
+            src_dir=${stm_exportdir}
+        fi
+        scripts/utils/create_dataset.sh \
+            --python ${python_hf} \
+            --src_lang ${src_lang} \
+            --raw_data_location ${src_dir} \
+            --output_path "${hf_datadir}" \
+            --stm "${merge_utt}"
+    fi
 else
     log "Skip the stages for data preparation"
 fi
@@ -858,8 +874,8 @@ if [ -n "${speed_perturb_factors}" ] && ! echo "${train_set}" | grep -q "_sp"; t
     train_set="${train_set}_sp"
 fi
 
-if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    log "Stage 7: Run ASR finetuning on the training data"
+if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
+    log "Stage 8: Run ASR finetuning on the training data"
     _dir="${st_exp}/${src_lang}/${train_set}/asr/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
@@ -932,6 +948,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         log "Training started... log: '${_logdir}/finetune_${JOBID}.log'"
 
         if "${debug}"; then
+            # ${python_hf} -m torch.distributed.launch --nproc_per_node 1 --master_port ${master_port} \
             ${python_hf} ${train_tool} \
                 --train-set ${train_set} \
                 --src-lang ${src_lang} \
@@ -957,8 +974,8 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     fi
 fi
 
-if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
-    log "Stage 8: Run (distributed) ASR inference on the dev/test data."
+if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
+    log "Stage 9: Run (distributed) ASR inference on the dev/test data."
     decode_suf="_org"
     if "${merge_decode}"; then
         decode_suf="_merged"
@@ -1085,8 +1102,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     done
 fi
 
-if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
-    log "Stage 9: Run evaluation on the ASR decoded data."
+if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
+    log "Stage 10: Run evaluation on the ASR decoded data."
 
     decode_suf="_org"
     if "${merge_decode}"; then
@@ -1131,8 +1148,8 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     done
 fi
 
-if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
-    log "Stage 10: Run ST finetuning on the training data"
+if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
+    log "Stage 11: Run ST finetuning on the training data"
     _dir="${st_exp}/${src_lang}/${train_set}/st/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
@@ -1241,8 +1258,8 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
     fi
 fi
 
-if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
-    log "Stage 11: Run (distributed) ST inference on the dev/test data."
+if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
+    log "Stage 12: Run (distributed) ST inference on the dev/test data."
     decode_suf="_org"
     if "${merge_decode}"; then
         decode_suf="_merged"
@@ -1371,8 +1388,8 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
     done
 fi
 
-if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
-    log "Stage 12: Run evaluation on the ST decoded data."
+if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
+    log "Stage 13: Run evaluation on the ST decoded data."
 
     decode_suf="_org"
     if "${merge_decode}"; then
@@ -1424,8 +1441,8 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
     done
 fi
 
-if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
-    log "Stage 13: Run multitask (ASR + ST) finetuning on the training data"
+if [ ${stage} -le 14 ] && [ ${stop_stage} -ge 14 ]; then
+    log "Stage 14: Run multitask (ASR + ST) finetuning on the training data"
     _dir="${st_exp}/${src_lang}/${train_set}/mtl/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
@@ -1535,8 +1552,8 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
     fi
 fi
 
-if [ ${stage} -le 14 ] && [ ${stop_stage} -ge 14 ]; then
-    log "Stage 14: Run (distributed) MTL inference on the dev/test data."
+if [ ${stage} -le 15 ] && [ ${stop_stage} -ge 15 ]; then
+    log "Stage 15: Run (distributed) MTL inference on the dev/test data."
     decode_suf="_org"
     if "${merge_decode}"; then
         decode_suf="_merged"
@@ -1669,8 +1686,8 @@ if [ ${stage} -le 14 ] && [ ${stop_stage} -ge 14 ]; then
     done
 fi
 
-if [ ${stage} -le 15 ] && [ ${stop_stage} -ge 15 ]; then
-    log "Stage 15: Run evaluation on the MTL decoded data."
+if [ ${stage} -le 16 ] && [ ${stop_stage} -ge 16 ]; then
+    log "Stage 16: Run evaluation on the MTL decoded data."
 
     decode_suf="_org"
     if "${merge_decode}"; then
