@@ -3,13 +3,14 @@
 # Copyright 2023 Johns Hopkins University (Cihan Xiao)
 # -*- coding: utf-8 -*-
 
-from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, WhisperTrainer
+from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, WhisperTrainer, BitsAndBytesConfig
 import argparse
 from pathlib import Path
-from peft import get_peft_model, LoraConfig
+from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import load_from_disk, concatenate_datasets, load_dataset
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer, EnglishTextNormalizer
+from peft.tuners.lora import LoraLayer
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 import evaluate
@@ -280,6 +281,17 @@ def parse_config(config):
             res["Seq2SeqTrainingArguments"]["learning_rate"])
         res["Seq2SeqTrainingArguments"]["weight_decay"] = float(
             res["Seq2SeqTrainingArguments"]["weight_decay"])
+
+        if "QuantizationConfig" in res:
+            if "bnb_4bit_compute_dtype" in res['QuantizationConfig']:
+                if res['QuantizationConfig']['bnb_4bit_compute_dtype'] == "bf16":
+                    res['QuantizationConfig']['bnb_4bit_compute_dtype'] = torch.bfloat16
+                elif res['QuantizationConfig']['bnb_4bit_compute_dtype'] == "fp16":
+                    res['QuantizationConfig']['bnb_4bit_compute_dtype'] = torch.float16
+                else:
+                    raise ValueError(
+                        f"Unsupported compute dtype: {res['QuantizationConfig']['bnb_4bit_compute_dtype']}")
+
         return res
 
 
@@ -456,35 +468,62 @@ def finetune(
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir, **_training_args)
 
+    # Step 6.1: Parse the quantiation arguments if qlora is used
+    quantization_config = None
+    load_in_4bit = False
+    load_in_8bit = False
+    if peft_method and peft_method == "qlora":
+        _quantization_config = _args.get('QuantizationConfig', None)
+        if _quantization_config is None:
+            _quantization_config = dict(
+                load_in_4bit=True,
+                load_in_8bit=False,
+                bnb_4bit_compute_dtype="bf16",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+            )
+        quantization_config = BitsAndBytesConfig(
+            **_quantization_config
+        )
+        assert not (
+            load_in_4bit and load_in_8bit), "Cannot load in both 4bit and 8bit"
+        logging.info(f"Quantization Config: {quantization_config}")
+
     # Step 7: Load the model and trainer
     if load_model_from_path:
         model = WhisperForConditionalGeneration.from_pretrained(
-            load_model_from_path)
+            load_model_from_path,
+            quantization_config=quantization_config,
+        )
     else:
         model = WhisperForConditionalGeneration.from_pretrained(
-            f"openai/whisper-{model_name}")
+            f"openai/whisper-{model_name}",
+            quantization_config=quantization_config,
+        )
 
     if resume_from_checkpoint and peft_method is None:
         print(f"Resuming from checkpoint: {resume_from_checkpoint}")
-        model = model.from_pretrained(resume_from_checkpoint)
+        model = model.from_pretrained(
+            resume_from_checkpoint,
+            quantization_config=quantization_config,
+        )
 
     if peft_method:
-        if peft_method == "lora":
+        if peft_method == "lora" or peft_method == "qlora":
             _peft_config = _args.get("LoraConfig", {})
             peft_config = LoraConfig(
                 inference_mode=False,
                 **_peft_config
             )
             logging.info(f"PEFT Config: {peft_config}")
+            if peft_method == "qlora":
+                model = prepare_model_for_kbit_training(model)
             model = get_peft_model(model, peft_config)
             model.print_trainable_parameters()
             training_args.output_dir = str(output_dir)
-        elif peft_method == "qlora":
-            raise NotImplementedError
         else:
             raise ValueError(f"Unknown PEFT method: {peft_method}")
 
-    # TODO: Extend this for multilingual training
     if src_lang != "all":
         model.generate = partial(
             model.generate, language=LANGS[src_lang], task="transcribe" if mode == "asr" else "translate")
@@ -566,7 +605,7 @@ def main():
     parser.add_argument("--on-the-fly-feat-extraction", action="store_true",
                         help="Whether to extract features on the fly without saving them")
     parser.add_argument("--peft_method", type=str, default=None,
-                        choices=["lora", "qlora"],
+                        choices=["lora", "qlora", None],
                         help="Which PEFT method to use")
     parser.add_argument("--dev-name", type=str, default="dev",
                         choices=["dev", "dev1", "dev2"],
