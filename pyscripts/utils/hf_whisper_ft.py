@@ -515,9 +515,11 @@ def finetune(
                 inference_mode=False,
                 **_peft_config
             )
+            # breakpoint()
             logging.info(f"PEFT Config: {peft_config}")
             if peft_method == "qlora":
-                model = prepare_model_for_kbit_training(model)
+                model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+                model.config.use_reentrant = True
             model = get_peft_model(model, peft_config)
             model.print_trainable_parameters()
             training_args.output_dir = str(output_dir)
