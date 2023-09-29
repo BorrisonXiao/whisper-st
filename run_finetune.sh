@@ -150,6 +150,33 @@ local_data_opts+=$src_lang
 local_data_opts+=' --datadir '
 local_data_opts+=$datadir
 
+./data.sh \
+    --expdir ft_exp \
+    --local_data_opts "$local_data_opts" \
+    --audio_format "flac.ark" \
+    --nj 80 \
+    --fs ${fs} \
+    --src_lang ${src_lang} \
+    --tgt_lang ${tgt_lang} \
+    --src_case ${src_case} \
+    --tgt_case ${tgt_case} \
+    --feats_type raw \
+    --speed_perturb_factors "0.9 1.0 1.1" \
+    --train_set "${train_set}" \
+    --valid_set "${train_dev}" \
+    --test_sets "${test_set}" \
+    --stage 0 \
+    --stop_stage 0 \
+    --datadir ${datadir} \
+    --dumpdir "${dumpdir}" \
+    --save_wav true \
+    --framework ${framework} \
+    --hf_datadir ${hf_datadir} \
+    --extra_valid_set "${extra_dev}" \
+    --merge_utt ${merge_utt} \
+    --remove_ark ${remove_ark} \
+    --python_hf ${python_hf} ${opts}
+
 ./finetune.sh \
     --ngpu 8 \
     --expdir ft_exp \

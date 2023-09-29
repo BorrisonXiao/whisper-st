@@ -27,13 +27,8 @@ datadir=
 stage=1               # Processes starts from the specified stage.
 stop_stage=10000      # Processes is stopped at the specified stage.
 skip_data_prep=false  # Skip data preparation stages.
-ngpu=1                # The number of gpus ("0" uses cpu, otherwise use gpu).
-num_nodes=1           # The number of nodes.
 nj=32                 # The number of parallel jobs.
-inference_nj=32       # The number of parallel jobs in decoding.
-gpu_inference=false   # Whether to perform gpu decoding.
 dumpdir=dump          # Directory to dump features.
-expdir=exp            # Directory to save experiments.
 python=python3        # Specify python to execute espnet commands.
 framework=huggingface # huggingface, openai
 hf_datadir=           # Directory to the hugging face dataset.
@@ -41,6 +36,8 @@ merge_utt=false       # Whether to merge utterances to the closest 30s for train
 merged_data_base=     # Base directory for merged data
 remove_ark=false      # Whether to remove ark files after merging
 python_hf=python3     # Specify python to execute hugging face commands.
+src_lang=es                # source language abbrev. id (e.g., es)
+tgt_lang=en                # target language abbrev. id (e.g., en)
 use_src_lang=true     # Incorporate ASR loss (use src texts) or not
 
 # Data preparation related
@@ -50,7 +47,6 @@ save_wav=false   # Whether to save the generated audio (only in feats_type=raw).
 # Tokenization related
 src_case=lc.rm
 tgt_case=tc
-# hugging_face_model_name_or_path="" # Hugging Face model or path for hugging_face tokenizer
 
 # Speed perturbation related
 speed_perturb_factors= # perturbation factors, e.g. "0.9 1.0 1.1" (separated by space).
@@ -59,8 +55,6 @@ speed_perturb_factors= # perturbation factors, e.g. "0.9 1.0 1.1" (separated by 
 feats_type=raw       # Feature type (raw or fbank_pitch).
 audio_format=flac    # Audio format: wav, flac, wav.ark, flac.ark  (only in feats_type=raw).
 fs=16k               # Sampling rate.
-min_wav_duration=0.1 # Minimum duration in second.
-max_wav_duration=20  # Maximum duration in second.
 
 # [Task dependent] Set the datadir name created by local/data.sh
 train_set=         # Name of training set.
@@ -77,16 +71,8 @@ Options:
     --stage          # Processes starts from the specified stage (default="${stage}").
     --stop_stage     # Processes is stopped at the specified stage (default="${stop_stage}").
     --skip_data_prep # Skip data preparation stages (default="${skip_data_prep}").
-    --skip_train     # Skip training stages (default="${skip_train}").
-    --skip_eval      # Skip decoding and evaluation stages (default="${skip_eval}").
-    --skip_upload    # Skip packing and uploading stages (default="${skip_upload}").
-    --ngpu           # The number of gpus ("0" uses cpu, otherwise use gpu, default="${ngpu}").
-    --num_nodes      # The number of nodes (default="${num_nodes}").
     --nj             # The number of parallel jobs (default="${nj}").
-    --inference_nj   # The number of parallel jobs in decoding (default="${inference_nj}").
-    --gpu_inference  # Whether to perform gpu decoding (default="${gpu_inference}").
     --dumpdir        # Directory to dump features (default="${dumpdir}").
-    --expdir         # Directory to save experiments (default="${expdir}").
     --python         # Specify python to execute espnet commands (default="${python}").
 
     # Data preparation related
@@ -99,85 +85,12 @@ Options:
     --feats_type       # Feature type (raw, fbank_pitch or extracted, default="${feats_type}").
     --audio_format     # Audio format: wav, flac, wav.ark, flac.ark  (only in feats_type=raw, default="${audio_format}").
     --fs               # Sampling rate (default="${fs}").
-    --min_wav_duration # Minimum duration in second (default="${min_wav_duration}").
-    --max_wav_duration # Maximum duration in second (default="${max_wav_duration}").
-
-    # Tokenization related
-    --oov                     # Out of vocabulary symbol (default="${oov}").
-    --blank                   # CTC blank symbol (default="${blank}").
-    --sos_eos                 # sos and eos symbole (default="${sos_eos}").
-    --token_joint=false       # Whether to use a single bpe system for both source and target languages.
-                              # if set as true, will use tgt_* for processing (default="${token_joint}").
-    --src_nbpe=30             # The number of BPE vocabulary for source language. (default="${src_nbpe}").
-    --src_bpemode=unigram     # Mode of BPE for source language (unigram or bpe). (default="${src_bpemode}").
-    --src_bpe_input_sentence_size=100000000 # Size of input sentence for BPE for source language. (default="${src_bpe_input_sentence_size}").
-    --src_bpe_nlsyms=         # Non-linguistic symbols list, separated by a comma, for BPE of source language. (default="${src_bpe_nlsyms}").
-    --src_bpe_char_cover=1.0  # Character coverage when modeling BPE for source language. (default="${src_bpe_char_cover}").
-    --tgt_token_type=bpe      # Tokenization type (char or bpe) for target language. (default="${tgt_token_type}").
-    --tgt_nbpe=30             # The number of BPE vocabulary for target language. (default="${tgt_nbpe}").
-    --tgt_bpemode=unigram     # Mode of BPE (unigram or bpe) for target language. (default="${tgt_bpemode}").
-    --tgt_bpe_input_sentence_size=100000000 # Size of input sentence for BPE for target language. (default="${tgt_bpe_input_sentence_size}").
-    --tgt_bpe_nlsyms=         # Non-linguistic symbols list, separated by a comma, for BPE for target language. (default="${tgt_bpe_nlsyms}").
-    --tgt_bpe_char_cover=1.0  # Character coverage when modeling BPE for target language. (default="${tgt_bpe_char_cover}").
-
-    # Language model related
-    --lm_tag          # Suffix to the result dir for language model training (default="${lm_tag}").
-    --lm_exp          # Specify the directory path for LM experiment.
-                      # If this option is specified, lm_tag is ignored (default="${lm_exp}").
-    --lm_stats_dir    # Specify the directory path for LM statistics (default="${lm_stats_dir}").
-    --lm_config       # Config for language model training (default="${lm_config}").
-    --lm_args         # Arguments for language model training (default="${lm_args}").
-                      # e.g., --lm_args "--max_epoch 10"
-                      # Note that it will overwrite args in lm config.
-    --use_word_lm     # Whether to use word language model (default="${use_word_lm}").
-    --word_vocab_size # Size of word vocabulary (default="${word_vocab_size}").
-    --num_splits_lm   # Number of splitting for lm corpus (default="${num_splits_lm}").
-
-    # ST model related
-    --st_tag           # Suffix to the result dir for st model training (default="${st_tag}").
-    --st_exp           # Specify the directory path for ST experiment.
-                       # If this option is specified, st_tag is ignored (default="${st_exp}").
-    --st_stats_dir     # Specify the directory path for ST statistics (default="${st_stats_dir}").
-    --st_config        # Config for st model training (default="${st_config}").
-    --st_args          # Arguments for st model training (default="${st_args}").
-                       # e.g., --st_args "--max_epoch 10"
-                       # Note that it will overwrite args in st config.
-    --pretrained_asr=          # Pretrained model to load (default="${pretrained_asr}").
-    --ignore_init_mismatch=      # Ignore mismatch parameter init with pretrained model (default="${ignore_init_mismatch}").
-    --feats_normalize  # Normalizaton layer type. (default="${feats_normalize}").
-    --num_splits_st    # Number of splitting for lm corpus.  (default="${num_splits_st}").
-    --src_lang=        # source language abbrev. id (e.g., es). (default="${src_lang}")
-    --tgt_lang=        # target language abbrev. id (e.g., en). (default="${tgt_lang}")
-    --use_src_lang=    # Incorporate ASR loss (use src texts) or not 
-
-    # Decoding related
-    --inference_tag       # Suffix to the result dir for decoding (default="${inference_tag}").
-    --inference_config    # Config for decoding (default="${inference_config}").
-    --inference_args      # Arguments for decoding (default="${inference_args}").
-                          # e.g., --inference_args "--lm_weight 0.1"
-                          # Note that it will overwrite args in inference config.
-    --inference_lm        # Language model path for decoding (default="${inference_lm}").
-    --inference_st_model # ST model path for decoding (default="${inference_st_model}").
-    --download_model      # Download a model from Model Zoo and use it for decoding (default="${download_model}").
     
     # [Task dependent] Set the datadir name created by local/data.sh
     --train_set     # Name of training set (required).
     --valid_set     # Name of validation set used for monitoring/tuning network training (required).
     --test_sets     # Names of test sets.
                     # Multiple items (e.g., both dev and eval sets) can be specified (required).
-    --src_bpe_train_text # Text file path of bpe training set for source language.
-    --tgt_bpe_train_text # Text file path of bpe training set for target language
-    --lm_train_text  # Text file path of language model training set.
-    --lm_dev_text   # Text file path of language model development set (default="${lm_dev_text}").
-    --lm_test_text  # Text file path of language model evaluation set (default="${lm_test_text}").
-    --nlsyms_txt    # Non-linguistic symbol list if existing (default="${nlsyms_txt}").
-    --cleaner       # Text cleaner (default="${cleaner}").
-    --g2p           # g2p method (default="${g2p}").
-    --score_opts             # The options given to sclite scoring (default="{score_opts}").
-    --local_score_opts       # The options given to local/score.sh (default="{local_score_opts}").
-    --st_speech_fold_length # fold_length for speech data during ST training (default="${st_speech_fold_length}").
-    --st_text_fold_length   # fold_length for text data during ST training (default="${st_text_fold_length}").
-    --lm_fold_length         # fold_length for LM training (default="${lm_fold_length}").
 EOF
 )
 
