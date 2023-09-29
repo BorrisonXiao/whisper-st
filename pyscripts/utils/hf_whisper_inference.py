@@ -22,6 +22,7 @@ LANGS = {
     "cmn": "chinese",
     "spa": "spanish",
     "rus": "russian",
+    "tus": "tunisian",
     "eng": "english",
 }
 
@@ -35,7 +36,7 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
         peft_config = PeftConfig.from_pretrained(peft_model)
         model = WhisperForConditionalGeneration.from_pretrained(
             peft_config.base_model_name_or_path).to(device)
-        processor = WhisperProcessor.from_pretrained(peft_config.base_model_name_or_path)
+        processor = WhisperProcessor.from_pretrained(peft_model)
         model = PeftModel.from_pretrained(model, peft_model)
     else:
         if pretrained_model is not None:
@@ -89,6 +90,7 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
             input_features = processor(
                 input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
             # Generate token ids
+            breakpoint()
             predicted_ids = model.generate(
                 input_features, forced_decoder_ids=forced_decoder_ids)
             # Decode token ids to text

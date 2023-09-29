@@ -26,18 +26,19 @@ min() {
 }
 SECONDS=0
 
-_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/st/lora
+_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
 task=asr
 src_langs=all
 # src_langs="ara cmn rus spa"
+# src_langs="ara cmn kor"
 # src_langs="rus spa"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
 outdir=/exp/cxiao/scale23/multi_st_decode
 inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
-inference_batch_size=32
-inference_nj=24
-merge_decode=true
+inference_batch_size=30
+inference_nj=8
+merge_decode=false
 merge_utt=true
 valid_set=dev1
 extra_valid_set=dev2
@@ -50,10 +51,9 @@ python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/pyth
 evaldir=evaluation
 scoredir=/exp/cxiao/scale23/scores_multilingual
 sclite_path=sclite
-mtl=false
 debug=false
 eval_cer=false
-stage=2
+stage=1
 stop_stage=2
 
 . utils/parse_options.sh
@@ -78,6 +78,7 @@ if [ "${task}" == "asr" ]; then
     merge_decode=true
 fi
 
+mtl=false
 if [[ "${_modeldir}" == *"/mtl/"* ]]; then
     mtl=true
 fi
@@ -97,12 +98,26 @@ if "${merge_utt}"; then
 fi
 
 declare -A testset_dict
+# testset_dict+=(
+#     ["ara"]="iwslt22_test"
+#     ["cmn"]="bbn_cts_bolt_test"
+#     ["kor"]="uhura_test"
+#     ["rus"]="uhura_test"
+#     ["spa"]="fisher_test callhome_test")
+
+# testset_dict+=(
+#     ["ara"]="fleurs_test"
+#     ["cmn"]="fleurs_test"
+#     ["kor"]="fleurs_test"
+#     ["rus"]="fleurs_test"
+#     ["spa"]="fleurs_test")
+
 testset_dict+=(
-    ["ara"]="iwslt22_test"
-    ["cmn"]="bbn_cts_bolt_test"
-    ["kor"]="uhura_test"
-    ["rus"]="uhura_test"
-    ["spa"]="fisher_test callhome_test")
+    ["ara"]="iwslt22_test fleurs_test"
+    ["cmn"]="bbn_cts_bolt_test fleurs_test"
+    ["kor"]="uhura_test fleurs_test"
+    ["rus"]="uhura_test fleurs_test"
+    ["spa"]="fisher_test callhome_test fleurs_test")
 
 if [ ${src_langs} == "all" ]; then
     src_langs="ara cmn kor rus spa"

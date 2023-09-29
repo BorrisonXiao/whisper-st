@@ -65,10 +65,11 @@ normalize_text=false                      # Whether to normalize text before tra
 python_hf=python3                         # Specify python to execute hugging face commands.
 fe_only=false                             # Whether to do feature extraction only
 asr_config=                               # Config for asr model training.
-mtl_config=
-eval_cer=false          # Whether to evaluate CER
-inference_batch_size=32 # Batch size for inference
-merge_decode=true       # Whether to decode on the merged data
+mtl_config=                               # Config for multi-task model training.
+eval_cer=false                            # Whether to evaluate CER
+inference_batch_size=32                   # Batch size for inference
+merge_decode=true                         # Whether to decode on the merged data
+dialect=                                  # The dialect language code will be used instead of the src_lang code if specified
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -725,7 +726,11 @@ fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     log "Stage 7: Run ASR finetuning on the training data"
-    _dir="${st_exp}/${src_lang}/${train_set}/asr/${peft_method}"
+    _langcode=${src_lang}
+    if [ -n "${dialect}" ]; then
+        _langcode="${dialect}"
+    fi
+    _dir="${st_exp}/${_langcode}/${train_set}/asr/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
@@ -768,6 +773,9 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     fi
     if [ -n "${asr_save_eval_preds}" ]; then
         opts+=" --save-eval-preds ${asr_save_eval_preds} "
+    fi
+    if [ -n "${dialect}" ]; then
+        opts+=" --dialect ${dialect} "
     fi
 
     if "${precompute_feats}"; then
@@ -833,6 +841,10 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
     if "${merge_utt}"; then
         train_suf="/merged"
     fi
+    _lang="${src_lang}"
+    if [ -n "${dialect}" ]; then
+        _lang="${dialect}"
+    fi
     # for dset in ${train_set} ${valid_set} ${test_sets}; do
     for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
@@ -847,7 +859,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _suf=""
         fi
-        _logdir="${st_exp}/logdir/inference_asr/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        _logdir="${st_exp}/logdir/inference_asr/${_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -876,8 +888,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             fi
         fi
 
-        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/asr/${peft_method}${train_suf}${decode_suf}"
-        _modeldir="${st_exp}/${src_lang}/${train_set}/asr/${peft_method}"
+        _dir="${st_exp}/${_lang}/decode/${train_set}/${dset}/asr/${peft_method}${train_suf}${decode_suf}"
+        _modeldir="${st_exp}/${_lang}/${train_set}/asr/${peft_method}"
 
         if [ "${dset}" = "${train_set}" ]; then
             ${python} pyscripts/utils/filter_sp.py \
@@ -922,8 +934,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         if "${debug}"; then
             ${inference_tool} \
                 --keyfile ${_logdir}/decode.1.scp \
-                --src-lang ${src_lang} \
-                --tgt-lang ${src_lang} \
+                --src-lang ${_lang} \
+                --tgt-lang ${_lang} \
                 --output_dir ${_logdir}/output.1 \
                 --pretrained-model ${_modeldir} \
                 --batch-size ${inference_batch_size} \
@@ -935,8 +947,8 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
-                --src-lang ${src_lang} \
-                --tgt-lang ${src_lang} \
+                --src-lang ${_lang} \
+                --tgt-lang ${_lang} \
                 --output_dir ${_logdir}/output.JOB \
                 --pretrained-model ${_modeldir} \
                 --batch-size ${inference_batch_size} \
@@ -962,6 +974,10 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
     if "${merge_utt}"; then
         train_suf="/merged"
     fi
+    _lang="${src_lang}"
+    if [ -n "${dialect}" ]; then
+        _lang="${dialect}"
+    fi
 
     for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
@@ -970,7 +986,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
         log "Running evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
-        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/asr/${peft_method}${train_suf}${decode_suf}"
+        _dir="${st_exp}/${_lang}/decode/${train_set}/${dset}/asr/${peft_method}${train_suf}${decode_suf}"
         _asr_hyp="${PWD}/${_dir}/text"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 
@@ -991,7 +1007,7 @@ if [ ${stage} -le 9 ] && [ ${stop_stage} -ge 9 ]; then
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --dset "${_dset}" \
-            --score_dir scores_ft/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+            --score_dir scores_ft/asr/hf_whisper_${model_name}/${_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done
@@ -1338,33 +1354,71 @@ if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
     # fi
 
     if "${precompute_feats}"; then
-        # If the feature is already extracted in previous runs, skip this step
-        if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr" ] ||
-            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
-            [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
-            log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
-            if "${debug}"; then
-                ${python_hf} ${train_tool} \
-                    --feat-extraction \
-                    --train-set ${train_set} \
-                    --src-lang ${src_lang} \
-                    --tgt-lang ${tgt_lang} \
-                    --model_name ${model_name} ${opts}
-            else
-                # Submit the feature extraction jobs
-                JOBID=$(date +'%Y%m%d%H%M%S')
-                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
-                log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
-                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
-                    ${python_hf} ${train_tool} \
-                    --feat-extraction \
-                    --train-set ${train_set} \
-                    --src-lang ${src_lang} \
-                    --tgt-lang ${tgt_lang} \
-                    --model_name ${model_name} ${opts}
-            fi
+        # If the src_lang is "all", check for all the languages, including ara, cmn, kor, rus and spa
+        if [ "${src_lang}" == "all" ]; then
+            for lang in ara cmn kor rus spa; do
+                if [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.asr" ] ||
+                    [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.st" ] ||
+                    [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${extra_valid_set}.st" ]; then
+                    log "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${lang}.${extra_valid_set}.st does not exist..."
+                    if "${debug}"; then
+                        ${python_hf} ${train_tool} \
+                            --feat-extraction \
+                            --train-set ${train_set} \
+                            --src-lang ${lang} \
+                            --tgt-lang ${lang} \
+                            --data-base-dir ${merged_data_base} \
+                            --output-dir ${hf_datadir}/features/${_feat_type} \
+                            --preprocessing-num-proc ${preprocessing_num_proc} \
+                            --normalize-text \
+                            --on-the-fly-feat-extraction \
+                            --save-feature-dir ${hf_datadir}/features/${_feat_type} \
+                            --debug
+                    else
+                        ${python_hf} ${train_tool} \
+                            --feat-extraction \
+                            --train-set ${train_set} \
+                            --src-lang ${lang} \
+                            --tgt-lang ${lang} \
+                            --data-base-dir ${merged_data_base} \
+                            --output-dir ${hf_datadir}/features/${_feat_type} \
+                            --preprocessing-num-proc ${preprocessing_num_proc} \
+                            --normalize-text \
+                            --on-the-fly-feat-extraction \
+                            --save-feature-dir ${hf_datadir}/features/${_feat_type}
+                    fi
+                    break
+                fi
+            done
         else
-            log "Skip feature extraction as the features are already extracted"
+            # If the feature is already extracted in previous runs, skip this step
+            if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr" ] ||
+                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
+                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
+                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
+                if "${debug}"; then
+                    ${python_hf} ${train_tool} \
+                        --feat-extraction \
+                        --train-set ${train_set} \
+                        --src-lang ${src_lang} \
+                        --tgt-lang ${tgt_lang} \
+                        --model_name ${model_name} ${opts}
+                else
+                    # Submit the feature extraction jobs
+                    JOBID=$(date +'%Y%m%d%H%M%S')
+                    log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
+                    log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
+                    ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+                        ${python_hf} ${train_tool} \
+                        --feat-extraction \
+                        --train-set ${train_set} \
+                        --src-lang ${src_lang} \
+                        --tgt-lang ${tgt_lang} \
+                        --model_name ${model_name} ${opts}
+                fi
+            else
+                log "Skip feature extraction as the features are already extracted"
+            fi
         fi
     fi
 

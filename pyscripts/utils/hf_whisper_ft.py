@@ -10,6 +10,7 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import load_from_disk, concatenate_datasets, load_dataset
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer, EnglishTextNormalizer
+from transformers.models.whisper.tokenization_whisper import TASK_IDS, TO_LANGUAGE_CODE
 from peft.tuners.lora import LoraLayer
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
@@ -21,12 +22,16 @@ from functools import partial
 import chinese_converter
 import re
 
+
 LANGS = {
     "ara": "arabic",
     "kor": "korean",
     "cmn": "chinese",
     "spa": "spanish",
     "rus": "russian",
+}
+DIALECT = {
+    "tus": {"src_lang": "ara", "dialect": "tunisian"},
 }
 
 
@@ -198,6 +203,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     https://medium.com/@bofenghuang7/what-i-learned-from-whisper-fine-tuning-event-2a68dab1862
     """
     processor: Any
+    dialects: dict = None
 
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
         if "input_features" not in features[0]:
@@ -227,6 +233,19 @@ class DataCollatorSpeechSeq2SeqWithPadding:
             "<|startoftranscript|>")
         if (labels[:, 0] == _bos_token_id).all().cpu().item():
             labels = labels[:, 1:]
+
+        # If dialects are provided, replace the language id with the dialect id
+        if self.dialects is not None and len(self.dialects) > 0:
+            for src_lang, dialect in self.dialects.items():
+                src_lang_token = TO_LANGUAGE_CODE[src_lang]
+                src_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
+                    f"<|{src_lang_token}|>")
+                dialect_lang_token = TO_LANGUAGE_CODE[dialect]
+                dialect_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
+                    f"<|{dialect_lang_token}|>")
+                # Replace src_lang_id with dialect_lang_id
+                labels = labels.masked_fill(
+                    labels.eq(src_lang_id), dialect_lang_id)
 
         batch["labels"] = labels
 
@@ -363,6 +382,7 @@ def finetune(
     dev_name="dev",
     deepspeed=None,
     save_eval_preds=None,
+    dialect=None,
 ):
     # Step 1: Load prepare the training/dev sets
     _train_dset, _val_dset = feat_extraction(
@@ -384,7 +404,20 @@ def finetune(
     # Step 4: Define the data collator
     processor = WhisperProcessor.from_pretrained(
         f"openai/whisper-{model_name}")
-    data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+    # If new languages are added, we need to add the corresponding language codes to the processor
+    # TODO: Currently supports only one dialect
+    dialects_dict = None
+    if dialect is not None:
+        special_tokens = processor.tokenizer.special_tokens_map
+        lang_code = TO_LANGUAGE_CODE[DIALECT[dialect]['dialect']]
+        lang_token = f"<|{lang_code}|>"
+        special_tokens['additional_special_tokens'].append(lang_token)
+        processor.tokenizer.add_special_tokens(special_tokens)
+        # The dialects_dict is used to map the src_lang to the dialect name
+        full_src_lang_name = LANGS[DIALECT[dialect]['src_lang']]
+        dialects_dict = {full_src_lang_name: DIALECT[dialect]['dialect']}
+    data_collator = DataCollatorSpeechSeq2SeqWithPadding(
+        processor=processor, dialects=dialects_dict)
 
     # Step 5: Define the metric
     _peft = peft_method if peft_method is not None else "none"
@@ -508,6 +541,11 @@ def finetune(
             quantization_config=quantization_config,
         )
 
+    if dialect is not None:
+        model.resize_token_embeddings(len(processor.tokenizer))
+        # Save the model with the new embeddings
+        model.save_pretrained(output_dir / "base_model")
+
     if peft_method:
         if peft_method == "lora" or peft_method == "qlora":
             _peft_config = _args.get("LoraConfig", {})
@@ -515,20 +553,36 @@ def finetune(
                 inference_mode=False,
                 **_peft_config
             )
-            # breakpoint()
             logging.info(f"PEFT Config: {peft_config}")
             if peft_method == "qlora":
-                model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=training_args.gradient_checkpointing)
+                model = prepare_model_for_kbit_training(
+                    model, use_gradient_checkpointing=training_args.gradient_checkpointing)
                 model.config.use_reentrant = True
+            else:
+                model.config.use_reentrant = False
             model = get_peft_model(model, peft_config)
+            if dialect is not None:
+                # Modify the peft config so that it points to the new base model
+                model.peft_config['default'].base_model_name_or_path = str(output_dir.absolute() / "base_model")
             model.print_trainable_parameters()
             training_args.output_dir = str(output_dir)
         else:
             raise ValueError(f"Unknown PEFT method: {peft_method}")
 
     if src_lang != "all":
+        _language = LANGS[src_lang]
+        if dialect is not None:
+            _language = DIALECT[dialect]['dialect']
+            # Update the lang_to_id mapping in the model's generation config
+            # i.e. adding an entry in the dictionary in the format of '<|dialect|>': <dialect_id>
+            # Note that the id is fetched from the tokenizers' vocab
+            dialect_token = f'<|{TO_LANGUAGE_CODE[DIALECT[dialect]["dialect"]]}|>'
+            dialect_token_id = processor.tokenizer.convert_tokens_to_ids(
+                dialect_token)
+            model.generation_config.lang_to_id.update(
+                {dialect_token: dialect_token_id})
         model.generate = partial(
-            model.generate, language=LANGS[src_lang], task="transcribe" if mode == "asr" else "translate")
+            model.generate, language=_language, task="transcribe" if mode == "asr" else "translate")
 
     # Apply SpecAugment if specified
     if _args.get("WhisperConfig", None) is not None and _args["WhisperConfig"].get("apply_spec_augment", False):
@@ -619,6 +673,8 @@ def main():
     parser.add_argument("--save-eval-preds", type=Path, default=None,
                         help="Path to the file to save the validation predictions, if None, the predictions will not be saved")
     parser.add_argument("--model_name", type=str, default="tiny")
+    parser.add_argument("--dialect", type=str, default=None,
+                        help="The dialect language code will be used instead of the src_lang code for training if specified.")
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -660,6 +716,7 @@ def main():
             deepspeed=args.deepspeed,
             dev_name=args.dev_name,
             save_eval_preds=args.save_eval_preds,
+            dialect=args.dialect,
         )
 
 
