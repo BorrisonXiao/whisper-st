@@ -18,7 +18,8 @@ src_lang=ara
 tgt_lang=eng
 
 # Use the dialectal prefix
-dialect=tus
+# dialect=tus
+dialect=
 
 train_set=train-cts
 # train_set=train-all
@@ -36,6 +37,7 @@ normalize_text=false           # Whether or not to normalize the text at trainin
 master_port=29500              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 merge_decode=true              # Whether to merge the utterances at decoding time
+skip_data_prep=true            # Whether to skip data preparation
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
@@ -44,6 +46,7 @@ python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/pyth
 merged_data_base=/exp/cxiao/scale23/merged_data_base
 
 opts=
+data_opts=
 if "${debug}"; then
     model=large-v2 # base, large, large-v2 etc.
     asr_config=conf/tuning/whisper-debug.yaml
@@ -124,10 +127,16 @@ if "${merge_utt}"; then
     dumpdir=dump/${src_lang}
     opts+=' --merged_data_base '
     opts+=$merged_data_base
+    data_opts+=' --merged_data_base '
+    data_opts+=$merged_data_base
 else
     hf_datadir=/exp/cxiao/scale23/hf_data
     datadir=data/${src_lang}
     dumpdir=dump/${src_lang}
+fi
+if [ -n "$dialect" ]; then
+    opts+=' --dialect '
+    opts+=$dialect
 fi
 
 # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
@@ -150,63 +159,52 @@ local_data_opts+=$src_lang
 local_data_opts+=' --datadir '
 local_data_opts+=$datadir
 
-./data.sh \
-    --expdir ft_exp \
-    --local_data_opts "$local_data_opts" \
-    --audio_format "flac.ark" \
-    --nj 80 \
-    --fs ${fs} \
-    --src_lang ${src_lang} \
-    --tgt_lang ${tgt_lang} \
-    --src_case ${src_case} \
-    --tgt_case ${tgt_case} \
-    --feats_type raw \
-    --speed_perturb_factors "0.9 1.0 1.1" \
-    --train_set "${train_set}" \
-    --valid_set "${train_dev}" \
-    --test_sets "${test_set}" \
-    --stage 0 \
-    --stop_stage 0 \
-    --datadir ${datadir} \
-    --dumpdir "${dumpdir}" \
-    --save_wav true \
-    --framework ${framework} \
-    --hf_datadir ${hf_datadir} \
-    --extra_valid_set "${extra_dev}" \
-    --merge_utt ${merge_utt} \
-    --remove_ark ${remove_ark} \
-    --python_hf ${python_hf} ${opts}
+if ! "${skip_data_prep}"; then
+    ./data.sh \
+        --local_data_opts "$local_data_opts" \
+        --audio_format "flac.ark" \
+        --nj 80 \
+        --fs ${fs} \
+        --src_lang ${src_lang} \
+        --tgt_lang ${tgt_lang} \
+        --src_case ${src_case} \
+        --tgt_case ${tgt_case} \
+        --feats_type raw \
+        --speed_perturb_factors "0.9 1.0 1.1" \
+        --train_set "${train_set}" \
+        --valid_set "${train_dev}" \
+        --test_sets "${test_set}" \
+        --stage 0 \
+        --stop_stage 0 \
+        --datadir ${datadir} \
+        --dumpdir "${dumpdir}" \
+        --save_wav true \
+        --framework ${framework} \
+        --hf_datadir ${hf_datadir} \
+        --extra_valid_set "${extra_dev}" \
+        --merge_utt ${merge_utt} \
+        --remove_ark ${remove_ark} \
+        --python_hf ${python_hf} ${data_opts}
+fi
 
 ./finetune.sh \
     --ngpu 8 \
     --expdir ft_exp \
     --local_data_opts "$local_data_opts" \
-    --audio_format "flac.ark" \
-    --use_lm false \
-    --token_joint false \
     --nj 80 \
-    --fs ${fs} \
     --st_config ${st_config} \
     --asr_config ${asr_config} \
     --mtl_config ${mtl_config} \
     --src_lang ${src_lang} \
     --tgt_lang ${tgt_lang} \
-    --tgt_token_type "bpe" \
-    --src_case ${src_case} \
-    --tgt_case ${tgt_case} \
     --feats_type raw \
     --speed_perturb_factors "0.9 1.0 1.1" \
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
     --test_sets "${test_set}" \
-    --src_bpe_train_text "data/${train_set}/text.${src_case}.${src_lang}" \
-    --tgt_bpe_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" \
-    --lm_train_text "data/${train_set}/text.${tgt_case}.${tgt_lang}" "$@" \
     --stage 7 \
     --stop_stage 7 \
-    --datadir ${datadir} \
     --dumpdir "${dumpdir}" \
-    --save_wav true \
     --st_tag whisper_${model} \
     --model_name ${model} \
     --inference_nj ${inference_nj} \
@@ -218,11 +216,8 @@ local_data_opts+=$datadir
     --dev_name ${train_dev} \
     --extra_valid_set "${extra_dev}" \
     --merge_utt ${merge_utt} \
-    --remove_ark ${remove_ark} \
     --normalize_text ${normalize_text} \
     --master_port ${master_port} \
     --python_hf ${python_hf} \
     --inference_batch_size ${inference_batch_size} \
-    --merge_decode ${merge_decode} \
-    --skip_data_prep false ${opts} \
-    --dialect ${dialect}
+    --merge_decode ${merge_decode} ${opts}

@@ -90,7 +90,6 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
             input_features = processor(
                 input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
             # Generate token ids
-            breakpoint()
             predicted_ids = model.generate(
                 input_features, forced_decoder_ids=forced_decoder_ids)
             # Decode token ids to text

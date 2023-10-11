@@ -556,7 +556,7 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
                 JOBID=$(date +'%Y%m%d%H%M%S')
                 log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${valid_set}.st does not exist..."
                 log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
-                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
+                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
                     ${python_hf} ${train_tool} \
                     --feat-extraction \
                     --train-set ${train_set} \
@@ -591,7 +591,7 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
             # shellcheck disable=SC2046,SC2086
             # ${cuda_cmd} --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
             # ${cuda_cmd} --hostname 'r9n03' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 16G --gpu ${ngpu} "${_logdir}"/finetune_${JOBID}.log \
                 ${python_hf} -m torch.distributed.launch --nproc_per_node ${ngpu} --master_port ${master_port} \
                 ${train_tool} \
                 --train-set ${train_set} \

@@ -26,19 +26,22 @@ min() {
 }
 SECONDS=0
 
-_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/st/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/asr/lora
+_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-all_sp/st/lora
 task=asr
-src_langs=all
+# src_langs=all
 # src_langs="ara cmn rus spa"
 # src_langs="ara cmn kor"
 # src_langs="rus spa"
+src_langs="spa"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
 outdir=/exp/cxiao/scale23/multi_st_decode
 inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
-inference_batch_size=30
+inference_batch_size=20
 inference_nj=8
-merge_decode=false
+merge_decode=true
 merge_utt=true
 valid_set=dev1
 extra_valid_set=dev2
@@ -98,12 +101,12 @@ if "${merge_utt}"; then
 fi
 
 declare -A testset_dict
-# testset_dict+=(
-#     ["ara"]="iwslt22_test"
-#     ["cmn"]="bbn_cts_bolt_test"
-#     ["kor"]="uhura_test"
-#     ["rus"]="uhura_test"
-#     ["spa"]="fisher_test callhome_test")
+testset_dict+=(
+    ["ara"]="iwslt22_test"
+    ["cmn"]="bbn_cts_bolt_test"
+    ["kor"]="uhura_test"
+    ["rus"]="uhura_test"
+    ["spa"]="fisher_test")
 
 # testset_dict+=(
 #     ["ara"]="fleurs_test"
@@ -112,12 +115,12 @@ declare -A testset_dict
 #     ["rus"]="fleurs_test"
 #     ["spa"]="fleurs_test")
 
-testset_dict+=(
-    ["ara"]="iwslt22_test fleurs_test"
-    ["cmn"]="bbn_cts_bolt_test fleurs_test"
-    ["kor"]="uhura_test fleurs_test"
-    ["rus"]="uhura_test fleurs_test"
-    ["spa"]="fisher_test callhome_test fleurs_test")
+# testset_dict+=(
+#     ["ara"]="iwslt22_test fleurs_test"
+#     ["cmn"]="bbn_cts_bolt_test fleurs_test"
+#     ["kor"]="uhura_test fleurs_test"
+#     ["rus"]="uhura_test fleurs_test"
+#     ["spa"]="fisher_test callhome_test fleurs_test")
 
 if [ ${src_langs} == "all" ]; then
     src_langs="ara cmn kor rus spa"
@@ -235,7 +238,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                 # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
                 #       but it's used only for deciding the sample ids.
                 # shellcheck disable=SC2046,SC2086
-                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                     ${inference_tool} \
                     --keyfile ${_logdir}/decode.JOB.scp \
                     --src-lang ${src_lang} \
@@ -259,8 +262,6 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "Stage 2: Run evaluation on the ${task} decoded data."
 
     for src_lang in ${src_langs}; do
-        # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-
         # If the language is kor, set eval_cer to true
         if [ "${src_lang}" = "kor" ]; then
             eval_cer=true
@@ -269,6 +270,7 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         fi
 
         test_sets=${testset_dict[${src_lang}]}
+        # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         for dset in ${test_sets}; do
             # for dset in ${valid_set} ${extra_valid_set}; do
             log "Running ${task} evaluation on ${dset}..."

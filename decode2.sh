@@ -944,7 +944,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
             # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
             #       but it's used only for deciding the sample ids.
             # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
@@ -1011,11 +1011,11 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
         decode_suf="_merged"
     fi
 
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${train_set}; do
         # for dset in ${valid_set} ${extra_valid_set}; do
-        # for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
         if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
             _suf="/org"
         elif [ "${dset}" = "${train_set}" ]; then
@@ -1104,7 +1104,7 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
             # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
             #       but it's used only for deciding the sample ids.
             # shellcheck disable=SC2046,SC2086
-            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                 ${inference_tool} \
                 --keyfile ${_logdir}/decode.JOB.scp \
                 --src-lang ${src_lang} \
@@ -1132,9 +1132,9 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
     fi
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set}; do
         log "Running evaluation on ${dset}"
