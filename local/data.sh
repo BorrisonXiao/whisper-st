@@ -10,6 +10,7 @@ stop_stage=100
 stereo=false
 train_set=
 dev_set=
+extra_dev_set=
 src_lang=
 ignore_segments=false
 fs_str=16000
@@ -63,7 +64,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
         opts+="--start-at-zero "
     fi
 
-    for set in $train_set $dev_set; do
+    for set in $train_set $dev_set $extra_dev_set; do
         log "Preparing $set"
 
         output_dir=$(pwd)/${datadir}/${set}

@@ -39,6 +39,7 @@ python_hf=python3     # Specify python to execute hugging face commands.
 src_lang=es           # source language abbrev. id (e.g., es)
 tgt_lang=en           # target language abbrev. id (e.g., en)
 use_src_lang=true     # Incorporate ASR loss (use src texts) or not
+bayes_mtl=false       # Whether to use Bayesian decomposition for the multi-task learning
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -157,6 +158,9 @@ if ! "${skip_data_prep}"; then
     if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
         log "Stage 1: Data preparation for ${datadir}/${train_set}, ${datadir}/${valid_set}, etc."
         # [Task dependent] Need to create data.sh for new corpus
+        if [ -n "${extra_valid_set}" ]; then
+            local_data_opts+=" --extra_dev_set ${extra_valid_set}"
+        fi
         local/data.sh ${local_data_opts}
     fi
 
@@ -200,8 +204,8 @@ if ! "${skip_data_prep}"; then
             # If nothing is need, then format_wav_scp.sh does nothing:
             # i.e. the input file format and rate is same as the output.
 
-            for dset in "${train_set}" "${valid_set}" "${test_sets}"; do
-                # for dset in ${train_set}; do
+            for dset in "${train_set}" "${valid_set}" "${extra_valid_set}" ${test_sets}; do
+                # for dset in ${extra_valid_set}; do
                 if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                     _suf="/org"
                 else
@@ -249,17 +253,30 @@ if ! "${skip_data_prep}"; then
             log "Error: not supported: --feats_type ${feats_type}"
             exit 2
         fi
+
+        if "${remove_ark}"; then
+            for dset in "${train_set}" "${valid_set}" "${extra_valid_set}" ${test_sets}; do
+                log "Removing ark files for ${dset}..."
+                if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
+                    _suf="/org"
+                else
+                    _suf=""
+                fi
+
+                rm -rf "${data_feats}${_suf}/${dset}/data"
+            done
+        fi
     fi
 
     if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         log "Stage 4: Merge the wav.scp for the raw wav files to be decoded."
-        # for dset in "${train_set}" "${valid_set}" ${test_sets}; do
-        for dset in ${train_set}; do
+        for dset in "${train_set}" "${valid_set}" "${extra_valid_set}" ${test_sets}; do
             if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                 _suf="/org"
             else
                 _suf=""
             fi
+            log "Creating ${data_feats}${_suf}/${dset}/wav_raw.scp..."
             cat ${data_feats}${_suf}/${dset}/wav/*/wav.scp >${data_feats}${_suf}/${dset}/wav_raw.scp
         done
     fi
@@ -310,20 +327,6 @@ if ! "${skip_data_prep}"; then
                 for i in $(seq "${nj}"); do
                     cat "${dumpdir}/merged/${dset}/format.${i}/merged.st.stm"
                 done >"${merged_data_base}/${src_lang}${_suf}/st.${src_lang}-${tgt_lang}.${dset}.stm"
-            done
-        fi
-
-        if "${remove_ark}"; then
-            for dset in "${train_set}" "${valid_set}" ${test_sets}; do
-                log "Removing ark files for ${dset}..."
-                if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
-                    _suf="/org"
-                else
-                    _suf=""
-                fi
-
-                rm -f "${data_feats}${_suf}/${dset}/wav.scp"
-                rm -rf "${data_feats}${_suf}/${dset}/data"
             done
         fi
     fi

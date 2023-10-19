@@ -202,8 +202,8 @@ fi
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
     --test_sets "${test_set}" \
-    --stage 7 \
-    --stop_stage 7 \
+    --stage 13 \
+    --stop_stage 13 \
     --dumpdir "${dumpdir}" \
     --st_tag whisper_${model} \
     --model_name ${model} \
