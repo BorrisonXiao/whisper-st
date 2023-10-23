@@ -65,7 +65,7 @@ else
 fi
 
 if [ ${model} == "large-v2" ]; then
-    inference_batch_size=32
+    inference_batch_size=24
 elif [ ${model} == "medium" ]; then
     inference_batch_size=48
 fi
@@ -96,13 +96,21 @@ fi
 
 declare -A testset_dict
 
+# testset_dict+=(
+#     ["ara"]="iwslt22_test fleurs_test"
+#     ["cmn"]="bbn_cts_bolt_test fleurs_test"
+#     ["kor"]="uhura_test fleurs_test"
+#     ["rus"]="uhura_test fleurs_test"
+#     ["spa"]="fisher_test callhome_test fleurs_test"
+#     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
+
 testset_dict+=(
-    ["ara"]="iwslt22_test fleurs_test"
-    ["cmn"]="bbn_cts_bolt_test fleurs_test"
-    ["kor"]="uhura_test fleurs_test"
-    ["rus"]="uhura_test fleurs_test"
-    ["spa"]="fisher_test callhome_test fleurs_test"
-    ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
+    ["ara"]="iwslt22_test"
+    ["cmn"]="bbn_cts_bolt_test"
+    ["kor"]="uhura_test"
+    ["rus"]="uhura_test"
+    ["spa"]="fisher_test callhome_test"
+    ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
@@ -122,7 +130,8 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+    # hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+    hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
     datadir=data/${src_lang}
     dumpdir=dump/${src_lang}
     opts+=' --merged_data_base '
@@ -202,8 +211,8 @@ fi
     --train_set "${train_set}" \
     --valid_set "${train_dev}" \
     --test_sets "${test_set}" \
-    --stage 13 \
-    --stop_stage 13 \
+    --stage 14 \
+    --stop_stage 15 \
     --dumpdir "${dumpdir}" \
     --st_tag whisper_${model} \
     --model_name ${model} \

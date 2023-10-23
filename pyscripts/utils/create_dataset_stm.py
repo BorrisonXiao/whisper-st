@@ -14,13 +14,15 @@ from pathlib import Path
 # Constants
 AUDIO_SAMPLING_RATE = 16000
 TARGET_LANGUAGE = 'eng'
-DATA_FILES = [
-    'ara.train-all_sp', 'ara.train-cts_sp', 'ara.iwslt22_test', 'ara.fleurs_test',
-    'cmn.train-all_sp', 'cmn.train-cts_sp', 'cmn.bbn_cts_bolt_test', 'cmn.fleurs_test',
-    'kor.train-all_sp', 'kor.train-cts_sp',  'kor.fleurs_test', 'kor.uhura_test',
-    'rus.train-all_sp', 'rus.train-cts_sp', 'rus.uhura_test', 'rus.fleurs_test',
-    'spa.train-all_sp', 'spa.train-cts_sp', 'spa.fisher_test', 'spa.callhome_test', 'spa.fleurs_test',
-]
+# Already processed files
+# DATA_FILES = [
+#     'ara.train-all_sp', 'ara.train-cts_sp', 'ara.iwslt22_test', 'ara.fleurs_test',
+#     'cmn.train-all_sp', 'cmn.train-cts_sp', 'cmn.bbn_cts_bolt_test', 'cmn.fleurs_test',
+#     'kor.train-all_sp', 'kor.train-cts_sp',  'kor.fleurs_test', 'kor.uhura_test',
+#     'rus.train-all_sp', 'rus.train-cts_sp', 'rus.uhura_test', 'rus.fleurs_test',
+#     'spa.train-all_sp', 'spa.train-cts_sp', 'spa.fisher_test', 'spa.callhome_test', 'spa.fleurs_test',
+# ]
+DATA_FILES = [ 'ara.train-all_sp' ]
 
 # Read stm file for transcript and translation respectively
 # Convert the utterance file path to the utterance id

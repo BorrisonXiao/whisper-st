@@ -63,6 +63,7 @@ def generate(keyfile, dumpdir, output_dir, dump_prefix=None):
     Path(datadir).mkdir(parents=True, exist_ok=True)
     sr_stm_path = dumpdir / "merged.sr.stm"
     st_stm_path = dumpdir / "merged.st.stm"
+    _prefix = dumpdir.parts[0]
     with open(sr_stm_path, "w", encoding="utf-8") as f_sr, open(st_stm_path, "w", encoding="utf-8") as f_st:
         for utt in tqdm(utts):
             abs_wav_path = (datadir / f"{utt.uttid}.wav").absolute()
@@ -76,8 +77,8 @@ def generate(keyfile, dumpdir, output_dir, dump_prefix=None):
                 stop_time=float(utt.duration),
                 transcript=utt.transcript,
             )
-            if dump_prefix:
-                splitted = str(sr_utt.filename).split("/dump/")
+            if dump_prefix and dump_prefix != "":
+                splitted = str(sr_utt.filename).split(f"/{_prefix}/")
                 sr_utt.filename = Path(dump_prefix) / splitted[1]
             st_utt = StmUtterance(
                 filename=abs_wav_path,
@@ -89,7 +90,7 @@ def generate(keyfile, dumpdir, output_dir, dump_prefix=None):
                 transcript=utt.translation,
             )
             if dump_prefix:
-                splitted = str(st_utt.filename).split("/dump/")
+                splitted = str(st_utt.filename).split(f"/{_prefix}/")
                 st_utt.filename = Path(dump_prefix) / splitted[1]
             print(sr_utt, file=f_sr)
             print(st_utt, file=f_st)

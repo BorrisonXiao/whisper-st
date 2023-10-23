@@ -68,7 +68,10 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev", merge_utt=False
     with open(stm_file, "w", encoding="utf-8") as f:
         if ref_stm_dict is not None:
             for uttid, header in ref_stm_dict.items():
-                text = text_dict[uttid]["text"]
+                try:
+                    text = text_dict[uttid]["text"]
+                except:
+                    breakpoint()
                 f.write(f"{header} {text}\n")
 
 

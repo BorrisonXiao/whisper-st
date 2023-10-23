@@ -38,7 +38,7 @@ normalize_text=false           # Whether or not to normalize the text at trainin
 master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 merge_decode=true              # Whether to merge the utterances at decoding time
-skip_data_prep=false           # Whether to skip data preparation
+skip_data_prep=true            # Whether to skip data preparation
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
@@ -122,9 +122,9 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+    hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
     datadir=data/${src_lang}
-    dumpdir=dump/${src_lang}
+    dumpdir=dump_joint/${src_lang}
     opts+=' --merged_data_base '
     opts+=$merged_data_base
     data_opts+=' --merged_data_base '
@@ -132,7 +132,7 @@ if "${merge_utt}"; then
 else
     hf_datadir=/exp/cxiao/scale23/hf_data
     datadir=data/${src_lang}
-    dumpdir=dump/${src_lang}
+    dumpdir=dump_joint/${src_lang}
 fi
 if [ -n "$dialect" ]; then
     opts+=' --dialect '
@@ -174,8 +174,8 @@ if ! "${skip_data_prep}"; then
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 4 \
-        --stop_stage 4 \
+        --stage 6 \
+        --stop_stage 6 \
         --datadir ${datadir} \
         --dumpdir "${dumpdir}" \
         --save_wav true \

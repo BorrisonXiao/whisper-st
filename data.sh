@@ -284,31 +284,50 @@ if ! "${skip_data_prep}"; then
     if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         log "Stage 5: Export the data directory and merge the utterances if specified."
         stm_exportdir=${dumpdir}/export
-        ${python} pyscripts/audio/export_wav.py --split-dev --src_lang ${src_lang} --outdir ${stm_exportdir}
+        # ${python} pyscripts/audio/export_wav.py \
+        #     --split-dev \
+        #     --src-lang ${src_lang} \
+        #     --outdir ${stm_exportdir} \
+        #     --dumpdir ${dumpdir}
 
         if "${merge_utt}"; then
             _logdir="${dumpdir}/merge_utt/${src_lang}/logdir"
             mkdir -p "${_logdir}"
-            pyscripts/utils/merge_utts.py \
-                --input_base_dir ${stm_exportdir} \
-                --output_base_dir "${_logdir}/tmp" \
-                --src_lang ${src_lang} \
-                --tgt_lang ${tgt_lang} \
-                --num_outputs ${nj} \
-                --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
+            # if "${bayes_mtl}"; then
+            #     log "Bayesian MTL is used. Merge the utterances with Gaussian distribution."
+            #     pyscripts/utils/merge_utts_gaussian.py \
+            #         --input_base_dir ${stm_exportdir} \
+            #         --output_base_dir "${_logdir}/tmp" \
+            #         --src_lang ${src_lang} \
+            #         --tgt_lang ${tgt_lang} \
+            #         --num_outputs ${nj} \
+            #         --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
+            # else
+            #     pyscripts/utils/merge_utts.py \
+            #         --input_base_dir ${stm_exportdir} \
+            #         --output_base_dir "${_logdir}/tmp" \
+            #         --src_lang ${src_lang} \
+            #         --tgt_lang ${tgt_lang} \
+            #         --num_outputs ${nj} \
+            #         --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
+            # fi
 
             for _path in "${_logdir}/tmp"/*; do
                 dset=${_path##*/}
 
                 # If the merged stm file exists already, don't do it again
-                if [ ! -d "${dumpdir}/merged/${dset}" ]; then
-                    log "Merging utterances for ${dset}"
-                    ${decode_cmd} JOB=1:"${nj}" "${_logdir}/${dset}"/merge.JOB.log \
-                        ${python} pyscripts/utils/generate_merged_utts.py \
-                        --keyfile ${_path}/keys.${dset}.JOB.scp \
-                        --dumpdir ${dumpdir}/merged/${dset}/format.JOB \
-                        --output_dir ${merged_data_base}/${src_lang}
-                fi
+                log "Merging utterances for ${dset}"
+                # ${python} pyscripts/utils/generate_merged_utts.py \
+                #     --keyfile ${_path}/keys.${dset}.1.scp \
+                #     --dumpdir ${dumpdir}/merged/${dset}/format.1 \
+                #     --output_dir ${merged_data_base}/${src_lang} \
+                #     --dump-prefix ""
+                ${decode_cmd} JOB=1:"${nj}" "${_logdir}/${dset}"/merge.JOB.log \
+                    ${python} pyscripts/utils/generate_merged_utts.py \
+                    --keyfile ${_path}/keys.${dset}.JOB.scp \
+                    --dumpdir ${dumpdir}/merged/${dset}/format.JOB \
+                    --output_dir ${merged_data_base}/${src_lang} \
+                    --dump-prefix ""
 
                 # Merge the resulted stm files
                 mkdir -p ${merged_data_base}/${src_lang}
@@ -350,3 +369,5 @@ if ! "${skip_data_prep}"; then
 else
     log "Skip the stages for data preparation"
 fi
+
+log "Successfully finished. [elapsed=${SECONDS}s]"

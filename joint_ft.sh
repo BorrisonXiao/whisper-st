@@ -206,14 +206,18 @@ fi
 
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     log "Stage 1: Run Bayesian-decomposed multitask finetuning on the training data"
-    _dir="${st_exp}/${src_lang}/${train_set}/mtl/${peft_method}"
+    _dir="${st_exp}/${src_lang}/${train_set}/bmtl/${peft_method}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
-    opts=" --mode mtl "
+    opts=" --mode bmtl "
     if [ "${framework}" == "huggingface" ]; then
         opts+=" --hf_datadir ${hf_datadir} "
-        opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
+        if "${debug}"; then
+            opts+=" --preprocessing_num_proc 1 "
+        else
+            opts+=" --preprocessing_num_proc ${preprocessing_num_proc} "
+        fi
         opts+=" --dev-name ${extra_valid_set} "
 
         if [ -n "${st_config}" ]; then
@@ -254,57 +258,25 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     if "${precompute_feats}"; then
         # If the src_lang is "all", check for all the languages, including ara, cmn, kor, rus and spa
         if [ "${src_lang}" == "all" ]; then
-            for lang in ara cmn kor rus spa; do
-                if [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.asr" ] ||
-                    [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.st" ] ||
-                    [ ! -d "${hf_datadir}/features/${_feat_type}/${lang}.${extra_valid_set}.st" ]; then
-                    log "${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${lang}.${extra_valid_set}.st does not exist..."
-                    if "${debug}"; then
-                        ${python_hf} ${train_tool} \
-                            --feat-extraction \
-                            --train-set ${train_set} \
-                            --src-lang ${lang} \
-                            --tgt-lang ${lang} \
-                            --data-base-dir ${merged_data_base} \
-                            --output-dir ${hf_datadir}/features/${_feat_type} \
-                            --preprocessing-num-proc ${preprocessing_num_proc} \
-                            --normalize-text \
-                            --on-the-fly-feat-extraction \
-                            --save-feature-dir ${hf_datadir}/features/${_feat_type} \
-                            --debug
-                    else
-                        ${python_hf} ${train_tool} \
-                            --feat-extraction \
-                            --train-set ${train_set} \
-                            --src-lang ${lang} \
-                            --tgt-lang ${lang} \
-                            --data-base-dir ${merged_data_base} \
-                            --output-dir ${hf_datadir}/features/${_feat_type} \
-                            --preprocessing-num-proc ${preprocessing_num_proc} \
-                            --normalize-text \
-                            --on-the-fly-feat-extraction \
-                            --save-feature-dir ${hf_datadir}/features/${_feat_type}
-                    fi
-                    break
-                fi
-            done
+            log "Currently does not support multilingual training..."
+            exit 2
         else
             # If the feature is already extracted in previous runs, skip this step
-            if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr" ] ||
-                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st" ] ||
-                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st" ]; then
-                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
+            if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.bmtl" ] ||
+                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.bmtl" ]; then
+                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.bmtl or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.bmtl does not exist..."
                 if "${debug}"; then
                     ${python_hf} ${train_tool} \
                         --feat-extraction \
                         --train-set ${train_set} \
                         --src-lang ${src_lang} \
                         --tgt-lang ${tgt_lang} \
+                        --output_dir ${_dir} \
                         --model_name ${model_name} ${opts}
                 else
                     # Submit the feature extraction jobs
                     JOBID=$(date +'%Y%m%d%H%M%S')
-                    log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.asr or ${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.st or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.st does not exist..."
+                    log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.bmtl or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.bmtl does not exist..."
                     log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
                     ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
                         ${python_hf} ${train_tool} \
@@ -312,6 +284,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                         --train-set ${train_set} \
                         --src-lang ${src_lang} \
                         --tgt-lang ${tgt_lang} \
+                        --output_dir ${_dir} \
                         --model_name ${model_name} ${opts}
                 fi
             else

@@ -35,6 +35,27 @@ DIALECT = {
 }
 
 
+def _init_bmtl_processor(model_name, src_lang, save_dir=None):
+    # If the save_dir is not None and the processor is already saved, load it
+    if save_dir is not None and save_dir.exists():
+        return WhisperProcessor.from_pretrained(save_dir)
+    # Otherwise, create a new processor
+    processor = WhisperProcessor.from_pretrained(
+        f"openai/whisper-{model_name}", language=src_lang, task="bmtl")
+    # Inject the <|bmtl|> token in addition to the <|transcribe|> and <|translate|> tokens
+    # Inject the <|startoftranscript|> and the <|startoftranslation|> tokens
+    special_tokens = processor.tokenizer.special_tokens_map
+    special_tokens["additional_special_tokens"].append("<|bmtl|>")
+    special_tokens["additional_special_tokens"].append(
+        "<|startoftranscript|>")
+    special_tokens["additional_special_tokens"].append(
+        "<|startoftranslation|>")
+    processor.tokenizer.add_special_tokens(special_tokens)
+    if save_dir is not None:
+        processor.save_pretrained(save_dir)
+    return processor
+
+
 def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr", dev_name="dev"):
     src_langs = [src_lang] if src_lang != "all" else list(LANGS.keys())
     train_dset_dict = {}
@@ -107,6 +128,19 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
                 "audio", "text", "src_lang", "tgt_lang"]])
             train_dset_dict[f"{lang}_{mode}"] = train_dset
             val_dset_dict[f"{lang}_{mode}"] = val_dset
+        elif mode == "bmtl":
+            # For Bayesian MTL, we need both the transcript and the translation
+            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+            # Only rename the "translation" column to "text" for the dev set to minimize changes to the rest of the code
+            val_dset = val_dset.rename_column("translation", "text")
+            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                "audio", "transcript", "translation", "src_lang", "tgt_lang"]])
+            # Note that the "transcript" column is kept in case we want to evaluate on ASR at training time
+            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                "audio", "transcript", "text", "src_lang", "tgt_lang"]])
+            train_dset_dict[f"{lang}_{mode}"] = train_dset
+            val_dset_dict[f"{lang}_{mode}"] = val_dset
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -124,6 +158,7 @@ def prepare_dataset(
         on_the_fly_feat_extraction=False,
         train=True,
         multilingual=False,
+        _processor=None,
 ):
     processed_dset_list = []
     processed_dset_dict = {}
@@ -146,22 +181,53 @@ def prepare_dataset(
                     f"{lang}.{dset_type}.{mode}"
                 logging.warning(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
-            if mode == "asr":
-                std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
-            else:
-                std = EnglishTextNormalizer({})
             processor = WhisperProcessor.from_pretrained(
-                f"openai/whisper-{model_name}", language=LANGS[lang], task="transcribe" if mode == "asr" else "translate")
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="transcribe" if mode == "asr" else "translate") if not _processor else _processor
+
+            if mode == "bmtl":
+                if normalize_text:
+                    std_basic = BasicTextNormalizer()
+                    std_eng = EnglishTextNormalizer({})
+                processor_eng = WhisperProcessor.from_pretrained(
+                    f"openai/whisper-{model_name}", language=LANGS[lang], task="translate")
 
             def _prepare_dataset(batch):
                 audio = batch["audio"]
                 if not on_the_fly_feat_extraction:
                     batch["input_features"] = processor.feature_extractor(
                         audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
-                text = std(batch["text"]).strip(
-                ) if normalize_text else batch["text"]
-                batch["labels"] = processor.tokenizer(text).input_ids
-                batch["labels_length"] = len(batch["labels"])
+
+                if mode == "bmtl":
+                    scp = std_basic(batch["transcript"]).strip(
+                    ) if normalize_text else batch["transcript"]
+                    if "train" in dset_type:
+                        translation = std_eng(batch["translation"]).strip(
+                        ) if normalize_text else batch["translation"]
+                        lbls_src = processor.tokenizer(scp).input_ids
+                        lbls_tgt = processor.tokenizer(translation).input_ids
+                        # Explicitly remove the src label's last token (the <|endoftext|> token)
+                        lbls_src = lbls_src[:-1]
+                        # Explicitly remove the first four tokens (the "<|startoftranscript|>" token and the language token,
+                        # the task token and the <|notimestamps|> token) and add the "<|startoftranslation|>" token
+                        lbls_tgt = lbls_tgt[3:]
+                        lbls_tgt[0] = processor.tokenizer.get_vocab()[
+                            "<|startoftranslation|>"]
+                        # Replace the 3rd (the <|transcribe|>) token with the
+                        batch["labels"] = lbls_src + lbls_tgt
+                    else:
+                        translation = std_eng(batch["text"]).strip(
+                        ) if normalize_text else batch["text"]
+                        batch["labels"] = processor_eng.tokenizer(translation).input_ids
+                    batch["labels_length"] = len(batch["labels"])
+                else:
+                    if mode == "asr":
+                        std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
+                    else:
+                        std = EnglishTextNormalizer({})
+                    text = std(batch["text"]).strip(
+                    ) if normalize_text else batch["text"]
+                    batch["labels"] = processor.tokenizer(text).input_ids
+                    batch["labels_length"] = len(batch["labels"])
                 return batch
 
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
@@ -328,10 +394,16 @@ def feat_extraction(
     on_the_fly_feat_extraction=False,
     dev_name="dev",
     train=True,
+    _processor=None,
+    save_dir=None,
 ):
     # Step 1: Load the sets
     train_dset_dict, val_dset_dict = load_train_and_dev_sets(
         hf_datadir, train_set, src_lang, tgt_lang, mode=mode, dev_name=dev_name)
+
+    if mode == "bmtl" and not _processor:
+        _processor = _init_bmtl_processor(
+            model_name=model_name, src_lang=LANGS[src_lang], save_dir=save_dir)
 
     # Step 2: Feature extraction
     # TODO (Cihan): Add support for subset multilingual training
@@ -346,6 +418,7 @@ def feat_extraction(
                                   on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                   train=train,
                                   multilingual=multilingual,
+                                  _processor=_processor,
                                   )
     _val_dset = prepare_dataset(dset_dict=val_dset_dict,
                                 model_name=model_name,
@@ -357,6 +430,7 @@ def feat_extraction(
                                 on_the_fly_feat_extraction=on_the_fly_feat_extraction,
                                 train=train,
                                 multilingual=multilingual,
+                                _processor=_processor,
                                 )
 
     return _train_dset, _val_dset
@@ -384,6 +458,13 @@ def finetune(
     save_eval_preds=None,
     dialect=None,
 ):
+    # Step 0: Load the processor
+    processor = None
+
+    if mode == "bmtl":
+        processor = _init_bmtl_processor(
+            model_name=model_name, src_lang=LANGS[src_lang], save_dir=output_dir / "processor")
+
     # Step 1: Load prepare the training/dev sets
     _train_dset, _val_dset = feat_extraction(
         hf_datadir=hf_datadir,
@@ -399,10 +480,11 @@ def finetune(
         on_the_fly_feat_extraction=on_the_fly_feat_extraction,
         dev_name=dev_name,
         train=True,
+        _processor=processor,
     )
 
     # Step 4: Define the data collator
-    processor = WhisperProcessor.from_pretrained(
+    processor = processor if processor is not None else WhisperProcessor.from_pretrained(
         f"openai/whisper-{model_name}")
     # If new languages are added, we need to add the corresponding language codes to the processor
     # TODO: Currently supports only one dialect
@@ -541,7 +623,8 @@ def finetune(
             quantization_config=quantization_config,
         )
 
-    if dialect is not None:
+    # In these two cases additional special tokens are added to the vocabulary
+    if dialect is not None or mode == "bmtl":
         model.resize_token_embeddings(len(processor.tokenizer))
         # Save the model with the new embeddings
         model.save_pretrained(output_dir / "base_model")
@@ -563,7 +646,8 @@ def finetune(
             model = get_peft_model(model, peft_config)
             if dialect is not None:
                 # Modify the peft config so that it points to the new base model
-                model.peft_config['default'].base_model_name_or_path = str(output_dir.absolute() / "base_model")
+                model.peft_config['default'].base_model_name_or_path = str(
+                    output_dir.absolute() / "base_model")
             model.print_trainable_parameters()
             training_args.output_dir = str(output_dir)
         else:
@@ -643,7 +727,7 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl"],
+                        choices=["asr", "st", "mtl", "bmtl"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")
@@ -694,6 +778,7 @@ def main():
             on_the_fly_feat_extraction=args.on_the_fly_feat_extraction,
             dev_name=args.dev_name,
             train=False,
+            save_dir=args.output_dir / "processor",
         )
     else:
         finetune(
