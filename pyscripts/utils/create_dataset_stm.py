@@ -22,7 +22,7 @@ TARGET_LANGUAGE = 'eng'
 #     'rus.train-all_sp', 'rus.train-cts_sp', 'rus.uhura_test', 'rus.fleurs_test',
 #     'spa.train-all_sp', 'spa.train-cts_sp', 'spa.fisher_test', 'spa.callhome_test', 'spa.fleurs_test',
 # ]
-DATA_FILES = [ 'ara.train-all_sp' ]
+DATA_FILES = [ 'ara.train-all_sp', 'spa.train-all_sp' ]
 
 # Read stm file for transcript and translation respectively
 # Convert the utterance file path to the utterance id

@@ -7,7 +7,8 @@ export PATH=$PWD/utils/:$KALDI_ROOT/tools/openfst/bin:$PATH
 export LC_ALL=C
 
 . utils/activate_hf.sh && . "${MAIN_ROOT}"/tools/extra_path.sh
-export PATH=$MAIN_ROOT/utils:$MAIN_ROOT/espnet/bin:$PATH
+export PYTHONPATH=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin:$PYTHONPATH
+export PATH=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin:$MAIN_ROOT/utils:$MAIN_ROOT/espnet/bin:$PATH
 
 export OMP_NUM_THREADS=1
 

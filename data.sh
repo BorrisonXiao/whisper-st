@@ -192,6 +192,9 @@ if ! "${skip_data_prep}"; then
     fi
 
     if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
+        # Switching to the espnet environment for data preparation
+        . ./path.sh
+        which python
         # Now supports only raw data extraction
         if [ "${feats_type}" = raw ]; then
             log "Stage 3: Format wav.scp: $datadir/ -> ${data_feats}"
@@ -266,6 +269,9 @@ if ! "${skip_data_prep}"; then
                 rm -rf "${data_feats}${_suf}/${dset}/data"
             done
         fi
+        # Switching back to the hugging face environment
+        . ./path_hf.sh
+        which python
     fi
 
     if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
@@ -284,33 +290,33 @@ if ! "${skip_data_prep}"; then
     if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         log "Stage 5: Export the data directory and merge the utterances if specified."
         stm_exportdir=${dumpdir}/export
-        # ${python} pyscripts/audio/export_wav.py \
-        #     --split-dev \
-        #     --src-lang ${src_lang} \
-        #     --outdir ${stm_exportdir} \
-        #     --dumpdir ${dumpdir}
+        ${python} pyscripts/audio/export_wav.py \
+            --split-dev \
+            --src-lang ${src_lang} \
+            --outdir ${stm_exportdir} \
+            --dumpdir ${dumpdir}
 
         if "${merge_utt}"; then
             _logdir="${dumpdir}/merge_utt/${src_lang}/logdir"
             mkdir -p "${_logdir}"
-            # if "${bayes_mtl}"; then
-            #     log "Bayesian MTL is used. Merge the utterances with Gaussian distribution."
-            #     pyscripts/utils/merge_utts_gaussian.py \
-            #         --input_base_dir ${stm_exportdir} \
-            #         --output_base_dir "${_logdir}/tmp" \
-            #         --src_lang ${src_lang} \
-            #         --tgt_lang ${tgt_lang} \
-            #         --num_outputs ${nj} \
-            #         --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
-            # else
-            #     pyscripts/utils/merge_utts.py \
-            #         --input_base_dir ${stm_exportdir} \
-            #         --output_base_dir "${_logdir}/tmp" \
-            #         --src_lang ${src_lang} \
-            #         --tgt_lang ${tgt_lang} \
-            #         --num_outputs ${nj} \
-            #         --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
-            # fi
+            if "${bayes_mtl}"; then
+                log "Bayesian MTL is used. Merge the utterances with Gaussian distribution."
+                pyscripts/utils/merge_utts_gaussian.py \
+                    --input_base_dir ${stm_exportdir} \
+                    --output_base_dir "${_logdir}/tmp" \
+                    --src_lang ${src_lang} \
+                    --tgt_lang ${tgt_lang} \
+                    --num_outputs ${nj} \
+                    --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
+            else
+                pyscripts/utils/merge_utts.py \
+                    --input_base_dir ${stm_exportdir} \
+                    --output_base_dir "${_logdir}/tmp" \
+                    --src_lang ${src_lang} \
+                    --tgt_lang ${tgt_lang} \
+                    --num_outputs ${nj} \
+                    --splits ${train_set} ${valid_set} ${extra_valid_set} ${test_sets}
+            fi
 
             for _path in "${_logdir}/tmp"/*; do
                 dset=${_path##*/}

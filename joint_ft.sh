@@ -62,6 +62,9 @@ eval_cer=false                            # Whether to evaluate CER
 inference_batch_size=32                   # Batch size for inference
 merge_decode=true                         # Whether to decode on the merged data
 dialect=                                  # The dialect language code will be used instead of the src_lang code if specified
+mask_asr_hyp=false                        # Whether to mask the ASR hypothesis at BMTL training time
+min_sample_prob=0.0                       # The minimum probability for sampling the BMTL ASR hypothesis
+max_sample_prob=0.0                       # The maximum probability for sampling the BMTL ASR hypothesis (0.0 means disable sampling)
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -141,11 +144,7 @@ if [ $# -ne 0 ]; then
     exit 2
 fi
 
-if [ "${framework}" == "huggingface" ]; then
-    . ./path_hf.sh
-else
-    . ./path.sh
-fi
+. ./path_hf.sh
 . ./cmd.sh
 
 # Check required arguments
@@ -251,9 +250,14 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     if [ -n "${ds_config}" ]; then
         opts+=" --deepspeed ${ds_config} "
     fi
-    # if [ -n "${st_save_eval_preds}" ]; then
-    #     opts+=" --save-eval-preds ${st_save_eval_preds} "
-    # fi
+    if [ -n "${st_save_eval_preds}" ]; then
+        opts+=" --save-eval-preds ${st_save_eval_preds} "
+    fi
+    if "${mask_asr_hyp}"; then
+        opts+=" --mask-asr-hyp "
+    fi
+    opts+=" --min-sample-prob ${min_sample_prob} "
+    opts+=" --max-sample-prob ${max_sample_prob} "
 
     if "${precompute_feats}"; then
         # If the src_lang is "all", check for all the languages, including ara, cmn, kor, rus and spa
@@ -327,7 +331,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 fi
 
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
-    log "Stage 2: Run (distributed) MTL inference on the dev/test data."
+    log "Stage 2: Run (distributed) BMTL inference on the dev/test data."
     decode_suf="_org"
     if "${merge_decode}"; then
         decode_suf="_merged"
@@ -337,126 +341,120 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         train_suf="/merged"
     fi
 
-    for task in "asr" "st"; do
-        for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-            # for dset in ${extra_valid_set} ${test_sets}; do
-            # for dset in ${train_set}; do
-            # for dset in ${valid_set} ${extra_valid_set}; do
-            # for dset in ${test_sets}; do
-            if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
-                _suf="/org"
-            elif [ "${dset}" = "${train_set}" ]; then
-                _suf="/org"
-                dset="${train_set}"
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${extra_valid_set} ${test_sets}; do
+    # for dset in ${train_set}; do
+    # for dset in ${valid_set} ${extra_valid_set}; do
+    for dset in ${test_sets}; do
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+            _suf="/org"
+        elif [ "${dset}" = "${train_set}" ]; then
+            _suf="/org"
+            dset="${train_set}"
+        else
+            _suf=""
+        fi
+        _logdir="${st_exp}/logdir/inference_bmtl/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        mkdir -p "${_logdir}"
+        if "${merge_decode}"; then
+            # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
+            if [[ ${dset} == *"_test" ]]; then
+                _suf="/testsets"
             else
                 _suf=""
             fi
-            _logdir="${st_exp}/logdir/inference_mtl/${task}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
-            mkdir -p "${_logdir}"
-            if "${merge_decode}"; then
-                # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
-                if [[ ${dset} == *"_test" ]]; then
-                    _suf="/testsets"
-                else
-                    _suf=""
-                fi
 
-                _srcdir=${merged_data_base}/${src_lang}${_suf}
-                _dsetdir=${_logdir}/tmp
+            _srcdir=${merged_data_base}/${src_lang}${_suf}
+            _dsetdir=${_logdir}/tmp
+            mkdir -p "${_dsetdir}"
+            pyscripts/utils/generate_wav_raw.py \
+                -i "${_srcdir}/st.${src_lang}-${tgt_lang}.${dset}.stm" \
+                -o "${_dsetdir}"
+        else
+            _dsetdir=${data_feats}${_suf}/${dset}
+            # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
+            if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
                 mkdir -p "${_dsetdir}"
-                pyscripts/utils/generate_wav_raw.py \
-                    -i "${_srcdir}/st.${src_lang}-${tgt_lang}.${dset}.stm" \
-                    -o "${_dsetdir}"
-            else
-                _dsetdir=${data_feats}${_suf}/${dset}
-                # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
-                if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
-                    mkdir -p "${_dsetdir}"
-                    _orgdir=${data_feats}${_suf}/dev
-                    pyscripts/utils/filter_dev.py \
-                        -i "${_orgdir}/wav_raw.scp" \
-                        -o "${_dsetdir}/wav_raw.scp" \
-                        -r /exp/scale23/data/3-way/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm
-                fi
+                _orgdir=${data_feats}${_suf}/dev
+                pyscripts/utils/filter_dev.py \
+                    -i "${_orgdir}/wav_raw.scp" \
+                    -o "${_dsetdir}/wav_raw.scp" \
+                    -r /exp/scale23/data/3-way/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm
             fi
+        fi
 
-            _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/${task}/${peft_method}${train_suf}${decode_suf}"
-            _modeldir="${st_exp}/${src_lang}/${train_set}/mtl/${peft_method}"
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/bmtl/${peft_method}${train_suf}${decode_suf}"
+        _modeldir="${st_exp}/${src_lang}/${train_set}/bmtl/${peft_method}"
 
-            if [ "${dset}" = "${train_set}" ]; then
-                ${python} pyscripts/utils/filter_sp.py \
-                    -i "${_dsetdir}/wav_raw.scp" \
-                    -o "${_dsetdir}/wav_raw_nosp.scp"
+        if [ "${dset}" = "${train_set}" ]; then
+            ${python} pyscripts/utils/filter_sp.py \
+                -i "${_dsetdir}/wav_raw.scp" \
+                -o "${_dsetdir}/wav_raw_nosp.scp"
 
-                key_file=${_dsetdir}/wav_raw_nosp.scp
-            else
-                key_file=${_dsetdir}/wav_raw.scp
-            fi
-            # 1. Split the key file
-            _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
+            key_file=${_dsetdir}/wav_raw_nosp.scp
+        else
+            key_file=${_dsetdir}/wav_raw.scp
+        fi
+        # 1. Split the key file
+        _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
 
-            split_scps=""
-            for n in $(seq "${_nj}"); do
-                split_scps+=" ${_logdir}/decode.${n}.scp"
-            done
-            # shellcheck disable=SC2086
-            utils/split_scp.pl "${key_file}" ${split_scps}
-
-            # 2. Submit jobs
-            log "Inference started... log: '${_logdir}/decode.*.log'"
-
-            opts=
-            if [ "${framework}" == "huggingface" ]; then
-                if "${merge_decode}"; then
-                    _hf_dset="${hf_datadir}/${src_lang}.${dset}"
-                else
-                    _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
-                fi
-                opts+=" --dset ${_hf_dset} "
-
-                if [ "${peft_method}" != none ]; then
-                    opts+=" --peft-model ${_modeldir} "
-                fi
-
-                if [ "${task}" == "st" ]; then
-                    opts+=" --task translate "
-                fi
-
-                inference_tool="pyscripts/utils/hf_whisper_inference.py"
-            else
-                inference_tool="pyscripts/utils/whisper_inference.py"
-            fi
-
-            if "${debug}"; then
-                ${inference_tool} \
-                    --keyfile ${_logdir}/decode.1.scp \
-                    --src-lang ${src_lang} \
-                    --tgt-lang ${src_lang} \
-                    --output_dir ${_logdir}/output.1 \
-                    --pretrained-model ${_modeldir} \
-                    --batch-size ${inference_batch_size} \
-                    --model_name ${model_name} ${opts}
-            else
-                # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
-                #       but it's used only for deciding the sample ids.
-                # shellcheck disable=SC2046,SC2086
-                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
-                    ${inference_tool} \
-                    --keyfile ${_logdir}/decode.JOB.scp \
-                    --src-lang ${src_lang} \
-                    --tgt-lang ${src_lang} \
-                    --output_dir ${_logdir}/output.JOB \
-                    --pretrained-model ${_modeldir} \
-                    --batch-size ${inference_batch_size} \
-                    --model_name ${model_name} ${opts}
-            fi
-
-            # 3. Concatenates the output files from each jobs
-            mkdir -p "${_dir}"
-            for i in $(seq "${_nj}"); do
-                cat "${_logdir}/output.${i}/text"
-            done | LC_ALL=C sort -k1 >"${_dir}/text"
+        split_scps=""
+        for n in $(seq "${_nj}"); do
+            split_scps+=" ${_logdir}/decode.${n}.scp"
         done
+        # shellcheck disable=SC2086
+        utils/split_scp.pl "${key_file}" ${split_scps}
+
+        # 2. Submit jobs
+        log "Inference started... log: '${_logdir}/decode.*.log'"
+
+        opts=
+        if "${merge_decode}"; then
+            _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+        else
+            _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
+        fi
+        opts+=" --dset ${_hf_dset} "
+
+        if [ "${peft_method}" != none ]; then
+            opts+=" --peft-model ${_modeldir} "
+        fi
+        opts+=" --task bmtl "
+
+        inference_tool="pyscripts/utils/hf_whisper_inference.py"
+
+        if "${debug}"; then
+            ${inference_tool} \
+                --keyfile ${_logdir}/decode.1.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${src_lang} \
+                --output_dir ${_logdir}/output.1 \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        else
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${inference_tool} \
+                --keyfile ${_logdir}/decode.JOB.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${src_lang} \
+                --output_dir ${_logdir}/output.JOB \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        fi
+
+        # 3. Concatenates the output files from each jobs
+        mkdir -p "${_dir}"
+        for i in $(seq "${_nj}"); do
+            cat "${_logdir}/output.${i}/asr"
+        done | LC_ALL=C sort -k1 >"${_dir}/asr"
+        for i in $(seq "${_nj}"); do
+            cat "${_logdir}/output.${i}/st"
+        done | LC_ALL=C sort -k1 >"${_dir}/st"
     done
 fi
 
@@ -472,15 +470,15 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         train_suf="/merged"
     fi
 
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
+    for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         log "Running ASR evaluation on ${dset}"
         eval_script=run-asr-eval.sh
 
-        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/asr/${peft_method}${train_suf}${decode_suf}"
-        _asr_hyp="${PWD}/${_dir}/text"
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/bmtl/${peft_method}${train_suf}${decode_suf}"
+        _asr_hyp="${PWD}/${_dir}/asr"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 
         opts=
@@ -500,15 +498,15 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
             --hyp_asr "${_asr_hyp}" \
             --sclite ${sclite_path} \
             --dset "${_dset}" \
-            --score_dir scores_ft/mtl/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+            --score_dir scores_ft/bmtl/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done
 
     # Note that we assume the evaluation code is available in the path
-    for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        # for dset in ${valid_set}; do
-        # for dset in ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
+    for dset in ${test_sets}; do
         # for dset in ${extra_valid_set} ${test_sets}; do
         # for dset in ${extra_valid_set}; do
         log "Running ST evaluation on ${dset}"
@@ -520,8 +518,8 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/mtl/st/${peft_method}${train_suf}${decode_suf}"
-        _st_hyp="${PWD}/${_dir}/text"
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/bmtl/${peft_method}${train_suf}${decode_suf}"
+        _st_hyp="${PWD}/${_dir}/st"
         _dset=$(echo "${dset}" | sed 's/_test$//')
 
         opts=
@@ -540,7 +538,185 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
             --hyp_mt "${_st_hyp}" \
             --model_tag ${model_name} \
             --dset "${_dset}" \
-            --score_dir scores_ft/mtl/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+            --score_dir scores_ft/bmtl/st/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+            --framework "${framework}" ${opts}
+        cd -
+    done
+fi
+
+if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
+    log "Stage 4: Run (distributed) teacher-forced BMTL inference on the dev/test data."
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
+
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${extra_valid_set} ${test_sets}; do
+    # for dset in ${train_set}; do
+    # for dset in ${valid_set} ${extra_valid_set}; do
+    for dset in ${test_sets}; do
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+            _suf="/org"
+        elif [ "${dset}" = "${train_set}" ]; then
+            _suf="/org"
+            dset="${train_set}"
+        else
+            _suf=""
+        fi
+        _logdir="${st_exp}/logdir/inference_bmtl_tf/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        mkdir -p "${_logdir}"
+        if "${merge_decode}"; then
+            # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
+            if [[ ${dset} == *"_test" ]]; then
+                _suf="/testsets"
+            else
+                _suf=""
+            fi
+
+            _srcdir=${merged_data_base}/${src_lang}${_suf}
+            _dsetdir=${_logdir}/tmp
+            mkdir -p "${_dsetdir}"
+            pyscripts/utils/generate_wav_raw.py \
+                -i "${_srcdir}/st.${src_lang}-${tgt_lang}.${dset}.stm" \
+                -o "${_dsetdir}"
+        else
+            _dsetdir=${data_feats}${_suf}/${dset}
+            # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
+            if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
+                mkdir -p "${_dsetdir}"
+                _orgdir=${data_feats}${_suf}/dev
+                pyscripts/utils/filter_dev.py \
+                    -i "${_orgdir}/wav_raw.scp" \
+                    -o "${_dsetdir}/wav_raw.scp" \
+                    -r /exp/scale23/data/3-way/${src_lang}/st.${src_lang}-${tgt_lang}.${dset}.stm
+            fi
+        fi
+
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/bmtl_tf/${peft_method}${train_suf}${decode_suf}"
+        _modeldir="${st_exp}/${src_lang}/${train_set}/bmtl/${peft_method}"
+
+        if [ "${dset}" = "${train_set}" ]; then
+            ${python} pyscripts/utils/filter_sp.py \
+                -i "${_dsetdir}/wav_raw.scp" \
+                -o "${_dsetdir}/wav_raw_nosp.scp"
+
+            key_file=${_dsetdir}/wav_raw_nosp.scp
+        else
+            key_file=${_dsetdir}/wav_raw.scp
+        fi
+        # 1. Split the key file
+        _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
+
+        split_scps=""
+        for n in $(seq "${_nj}"); do
+            split_scps+=" ${_logdir}/decode.${n}.scp"
+        done
+        # shellcheck disable=SC2086
+        utils/split_scp.pl "${key_file}" ${split_scps}
+
+        # 2. Submit jobs
+        log "Inference started... log: '${_logdir}/decode.*.log'"
+
+        opts=
+        if "${merge_decode}"; then
+            _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+        else
+            _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
+        fi
+        opts+=" --dset ${_hf_dset} "
+
+        if [ "${peft_method}" != none ]; then
+            opts+=" --peft-model ${_modeldir} "
+        fi
+        opts+=" --task bmtl "
+
+        inference_tool="pyscripts/utils/hf_whisper_inference_tf.py"
+
+        if "${debug}"; then
+            ${inference_tool} \
+                --keyfile ${_logdir}/decode.1.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${src_lang} \
+                --output_dir ${_logdir}/output.1 \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        else
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${inference_tool} \
+                --keyfile ${_logdir}/decode.JOB.scp \
+                --src-lang ${src_lang} \
+                --tgt-lang ${src_lang} \
+                --output_dir ${_logdir}/output.JOB \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        fi
+
+        # 3. Concatenates the output files from each jobs
+        mkdir -p "${_dir}"
+        for i in $(seq "${_nj}"); do
+            cat "${_logdir}/output.${i}/st_tf"
+        done | LC_ALL=C sort -k1 >"${_dir}/st_tf"
+    done
+fi
+
+if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+    log "Stage 5: Run evaluation on the MT decoded data."
+
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
+
+    # Note that we assume the evaluation code is available in the path
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+    # for dset in ${valid_set}; do
+    for dset in ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
+        # for dset in ${extra_valid_set}; do
+        log "Running ST evaluation on ${dset}"
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+            eval_script=run-devset-eval.sh
+        elif [ "${dset}" = "fleurs_test" ]; then
+            eval_script=run-ood-eval.sh
+        else
+            eval_script=run-testset-eval.sh
+        fi
+
+        _dir="${st_exp}/${src_lang}/decode/${train_set}/${dset}/bmtl_tf/${peft_method}${train_suf}${decode_suf}"
+        _st_hyp="${PWD}/${_dir}/st_tf"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
+
+        opts=
+        if [ "${src_lang}" == "ara" ]; then
+            opts+=" --arabic true "
+        fi
+
+        if "${merge_decode}"; then
+            opts+=" --merge_utt true "
+            opts+=" --data_base_dir ${merged_data_base} "
+        fi
+
+        cd evaluation
+        ${eval_script} \
+            --src_lang ${src_lang} \
+            --hyp_mt "${_st_hyp}" \
+            --model_tag ${model_name} \
+            --dset "${_dset}" \
+            --score_dir scores_ft/bmtl/st_tf/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
             --framework "${framework}" ${opts}
         cd -
     done

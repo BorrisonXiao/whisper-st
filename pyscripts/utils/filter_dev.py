@@ -9,6 +9,7 @@ def filter_dev(input_wavscp: Path, output_wavscp: Path, ref_wavscp: Path):
     """
     Keep only the utterances that are in the reference wav.scp file.
     """
+    breakpoint()
     if str(ref_wavscp).endswith(".stm"):
         # Convert stm to wav.scp style
         with ref_wavscp.open() as f:

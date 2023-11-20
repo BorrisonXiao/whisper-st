@@ -69,40 +69,92 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
         keys = set(_keys)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output = output_dir / "text"
-    with open(output, "w") as f:
-        total_len = len(ds) if keyfile is None else len(keys)
-        pbar = tqdm(range(total_len))
-        batch = []
-        uttids = []
-        for utt in ds:
-            uttid = utt["uttid"]
-            if keyfile is not None and uttid not in keys:
-                continue
-            # Accumulate the batch
-            uttids.append(uttid)
-            batch.append(utt)
-            if len(batch) < batch_size and uttid != last_uttid:
-                continue
-            # Process the batch
-            input_speech = [utt["audio"]["array"] for utt in batch]
-            samping_rate = batch[0]["audio"]["sampling_rate"]
-            input_features = processor(
-                input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
-            # Generate token ids
-            predicted_ids = model.generate(
-                input_features, forced_decoder_ids=forced_decoder_ids)
-            # Decode token ids to text
-            hyps = processor.batch_decode(
-                predicted_ids, skip_special_tokens=True)
-            for i, hyp in enumerate(hyps):
-                print(uttids[i], hyp, file=f)
-            f.flush()
-            pbar.update(len(batch))
-
-            # Reset the batch
+    if task=="bmtl":
+        output_asr = output_dir / "asr"
+        output_st = output_dir / "st"
+        startoftranslation_id = processor.tokenizer.convert_tokens_to_ids("<|startoftranslation|>")
+        with open(output_asr, "w") as f_asr, open(output_st, "w") as f_st:
+            total_len = len(ds) if keyfile is None else len(keys)
+            pbar = tqdm(range(total_len))
             batch = []
             uttids = []
+            for utt in ds:
+                uttid = utt["uttid"]
+                if keyfile is not None and uttid not in keys:
+                    continue
+                # Accumulate the batch
+                uttids.append(uttid)
+                batch.append(utt)
+                if len(batch) < batch_size and uttid != last_uttid:
+                    continue
+                # Process the batch
+                input_speech = [utt["audio"]["array"] for utt in batch]
+                samping_rate = batch[0]["audio"]["sampling_rate"]
+                input_features = processor(
+                    input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
+                # Generate token ids
+                predicted_ids = model.generate(
+                    input_features, forced_decoder_ids=forced_decoder_ids)
+                # Decode token ids to text
+                # If the model fails to produce the startoftranslation token, ignore the whole sequence for ASR eval
+                asr_hyp_ids = []
+                st_hyp_ids = []
+                for i, predicted_id in enumerate(predicted_ids):
+                    try:
+                        st_hyp_ids.append(predicted_id[predicted_id.tolist().index(startoftranslation_id):])
+                        asr_hyp_ids.append(predicted_id[:predicted_id.tolist().index(startoftranslation_id)])
+                    except ValueError:
+                        asr_hyp_ids.append([])
+                        st_hyp_ids.append(predicted_id)
+                asr_hyps = processor.batch_decode(
+                    asr_hyp_ids, skip_special_tokens=True)
+                st_hyps = processor.batch_decode(
+                    st_hyp_ids, skip_special_tokens=True)
+                for i, (asr_hyp, st_hyp) in enumerate(zip(asr_hyps, st_hyps)):
+                    print(uttids[i], asr_hyp, file=f_asr)
+                    print(uttids[i], st_hyp, file=f_st)
+                f_asr.flush()
+                f_st.flush()
+                pbar.update(len(batch))
+
+                # Reset the batch
+                batch = []
+                uttids = []
+    else:
+        output = output_dir / "text"
+        with open(output, "w") as f:
+            total_len = len(ds) if keyfile is None else len(keys)
+            pbar = tqdm(range(total_len))
+            batch = []
+            uttids = []
+            for utt in ds:
+                uttid = utt["uttid"]
+                if keyfile is not None and uttid not in keys:
+                    continue
+                # Accumulate the batch
+                uttids.append(uttid)
+                batch.append(utt)
+                if len(batch) < batch_size and uttid != last_uttid:
+                    continue
+                # Process the batch
+                input_speech = [utt["audio"]["array"] for utt in batch]
+                samping_rate = batch[0]["audio"]["sampling_rate"]
+                input_features = processor(
+                    input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
+                # Generate token ids
+                predicted_ids = model.generate(
+                    input_features, forced_decoder_ids=forced_decoder_ids)
+                # Decode token ids to text
+                hyps = processor.batch_decode(
+                    predicted_ids, skip_special_tokens=True)
+                for i, hyp in enumerate(hyps):
+                    print(uttids[i], hyp, file=f)
+                f.flush()
+                pbar.update(len(batch))
+
+                # Reset the batch
+                batch = []
+                uttids = []
 
 
 def main():
@@ -121,7 +173,7 @@ def main():
                         default="exp/st_hf_whisper_tiny/logdir/inference_asr/cmn/bbn_cts_bolt_test/output.1",
                         help="Path to the output directory")
     parser.add_argument("--task", type=str, default="transcribe",
-                        choices=["transcribe", "translate"],
+                        choices=["transcribe", "translate", "bmtl"],
                         help="Task to perform")
     parser.add_argument("--pretrained-model", type=Path, default=None,
                         help="Path to the pretrained (finetuned) model, if not specified, the model will be loaded from HuggingFace")

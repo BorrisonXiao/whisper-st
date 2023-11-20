@@ -60,6 +60,7 @@ else
     _suf="/cts"
 fi
 stm_dir=${data_base_dir}/${src_lang}/testsets${_suf}
+echo $stm_dir; exit 1
 testset=${cts_testset_dict[${src_lang}]}
 
 _prefix=

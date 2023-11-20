@@ -22,6 +22,9 @@ from functools import partial
 import chinese_converter
 import re
 
+import deepspeed
+deepspeed.ops.op_builder.CPUAdamBuilder().load()
+
 
 LANGS = {
     "ara": "arabic",
@@ -43,11 +46,11 @@ def _init_bmtl_processor(model_name, src_lang, save_dir=None):
     processor = WhisperProcessor.from_pretrained(
         f"openai/whisper-{model_name}", language=src_lang, task="bmtl")
     # Inject the <|bmtl|> token in addition to the <|transcribe|> and <|translate|> tokens
-    # Inject the <|startoftranscript|> and the <|startoftranslation|> tokens
+    # Inject the <|startofasr|> and the <|startoftranslation|> tokens
     special_tokens = processor.tokenizer.special_tokens_map
     special_tokens["additional_special_tokens"].append("<|bmtl|>")
     special_tokens["additional_special_tokens"].append(
-        "<|startoftranscript|>")
+        "<|startofasr|>")
     special_tokens["additional_special_tokens"].append(
         "<|startoftranslation|>")
     processor.tokenizer.add_special_tokens(special_tokens)
@@ -207,7 +210,7 @@ def prepare_dataset(
                         lbls_tgt = processor.tokenizer(translation).input_ids
                         # Explicitly remove the src label's last token (the <|endoftext|> token)
                         lbls_src = lbls_src[:-1]
-                        # Explicitly remove the first four tokens (the "<|startoftranscript|>" token and the language token,
+                        # Explicitly remove the first four tokens (the "<|startofasr|>" token and the language token,
                         # the task token and the <|notimestamps|> token) and add the "<|startoftranslation|>" token
                         lbls_tgt = lbls_tgt[3:]
                         lbls_tgt[0] = processor.tokenizer.get_vocab()[
@@ -217,7 +220,8 @@ def prepare_dataset(
                     else:
                         translation = std_eng(batch["text"]).strip(
                         ) if normalize_text else batch["text"]
-                        batch["labels"] = processor_eng.tokenizer(translation).input_ids
+                        batch["labels"] = processor_eng.tokenizer(
+                            translation).input_ids
                     batch["labels_length"] = len(batch["labels"])
                 else:
                     if mode == "asr":
@@ -235,7 +239,7 @@ def prepare_dataset(
             processed_dset = dset.map(_prepare_dataset,
                                       num_proc=preprocessing_num_proc,
                                       remove_columns=col_names,
-                                      desc="Preprocessing dataset")
+                                      desc="Preprocessing dataset",)
             # Filter out utterances whose token length exceeds 448
             max_label_length = 448  # 448 is the max length of the label sequence
 
@@ -457,6 +461,9 @@ def finetune(
     deepspeed=None,
     save_eval_preds=None,
     dialect=None,
+    mask_asr_hyp=False,
+    min_sample_prob=0.0,
+    max_sample_prob=0.0,
 ):
     # Step 0: Load the processor
     processor = None
@@ -487,7 +494,7 @@ def finetune(
     processor = processor if processor is not None else WhisperProcessor.from_pretrained(
         f"openai/whisper-{model_name}")
     # If new languages are added, we need to add the corresponding language codes to the processor
-    # TODO: Currently supports only one dialect
+    # TODO: Currently supports only single dialectal training
     dialects_dict = None
     if dialect is not None:
         special_tokens = processor.tokenizer.special_tokens_map
@@ -508,11 +515,30 @@ def finetune(
     metric_sacrebleu = evaluate.load("sacrebleu", experiment_id=experiment_id)
 
     def compute_metrics(pred, normalize_eval=False):
+        # TODO: Remove the non-ST part of the BMTL predictions to only evaluate the ST part
+        # with respect to the dev references
         pred_ids = pred.predictions
         label_ids = pred.label_ids
 
         # replace -100 with the pad_token_id
         label_ids[label_ids == -100] = processor.tokenizer.pad_token_id
+
+        if mode == "bmtl":
+            org_pred_ids = pred_ids.clone()
+            # Replace the ASR content, namely whatever between the fourth token and
+            # <|startoftranslation|>, with padding tokens to avoid evaluating the ASR part
+            # of the BMTL predictions
+            for pred_id in pred_ids:
+                startoftranslation_id = processor.tokenizer.convert_tokens_to_ids(
+                    "<|startoftranslation|>")
+                _asr_end_pos = (pred_id == startoftranslation_id).nonzero()[0]
+                # If the model fails to predict the <|startoftranslation|> token, the entire
+                # sequence is taken
+                asr_end_pos = _asr_end_pos[0] if len(
+                    _asr_end_pos) > 0 else 4
+                # Replace the ASR part with padding tokens
+                pred_id[4:asr_end_pos] = [
+                    processor.tokenizer.pad_token_id] * (asr_end_pos - 4)
 
         # we do not want to group tokens when computing the metrics
         pred_str = processor.tokenizer.batch_decode(
@@ -522,6 +548,9 @@ def finetune(
             pred_ids[:, :4], skip_special_tokens=False)
         label_str = processor.tokenizer.batch_decode(
             label_ids, skip_special_tokens=True)
+        if mode == "bmtl":
+            org_pred_str = processor.tokenizer.batch_decode(
+                org_pred_ids, skip_special_tokens=True)
 
         # Perform the traditional-to-simplified conversion for Chinese anyways
         # Also, due to the training set, some normalization is needed for Chinese
@@ -554,6 +583,8 @@ def finetune(
             with open(save_eval_preds, "a") as f:
                 for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:200]):
                     f.write(f"Ref: {label}\n")
+                    if mode == "bmtl":
+                        f.write(f"Org Pred: {org_pred_str[i]}\n")
                     f.write(f"Pred: {pred}\n")
                     f.write(f"Prefix: {prefixes[i]}\n\n")
                 print("--------------------------------------------------", file=f)
@@ -666,7 +697,11 @@ def finetune(
             model.generation_config.lang_to_id.update(
                 {dialect_token: dialect_token_id})
         model.generate = partial(
-            model.generate, language=_language, task="transcribe" if mode == "asr" else "translate")
+            model.generate, language=_language, task="transcribe" if mode == "asr" else "translate" if mode == "st" else "bmtl")
+
+    if mode == "bmtl":
+        model.generation_config.task_to_id['bmtl'] = processor.tokenizer.convert_tokens_to_ids(
+            '<|bmtl|>')
 
     # Apply SpecAugment if specified
     if _args.get("WhisperConfig", None) is not None and _args["WhisperConfig"].get("apply_spec_augment", False):
@@ -692,6 +727,10 @@ def finetune(
         tokenizer=processor,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
+        mask_asr_hyp=mask_asr_hyp,
+        min_sample_prob=min_sample_prob,
+        max_sample_prob=max_sample_prob,
+        src_lang=LANGS[src_lang],
     )
 
     # Step 8: Launch training
@@ -759,6 +798,14 @@ def main():
     parser.add_argument("--model_name", type=str, default="tiny")
     parser.add_argument("--dialect", type=str, default=None,
                         help="The dialect language code will be used instead of the src_lang code for training if specified.")
+    parser.add_argument("--mask-asr-hyp", action="store_true",
+                        help="Whether to mask the ASR hypothesis during BMTL training.")
+    parser.add_argument("--min-sample-prob", type=float, default=0.0,
+                        help="Minimum sampling probability for the BMTL training.")
+    parser.add_argument("--max-sample-prob", type=float, default=0.0,
+                        help="Maximum sampling probability for the BMTL training. \
+                        Note that the sampling mechanism is disabled if this is set to 0.0.\
+                        Also note that the sampling probability will be linearly increased from min_sample_prob to max_sample_prob during the training AFTER the warmup steps.")
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -802,6 +849,9 @@ def main():
             dev_name=args.dev_name,
             save_eval_preds=args.save_eval_preds,
             dialect=args.dialect,
+            mask_asr_hyp=args.mask_asr_hyp,
+            min_sample_prob=args.min_sample_prob,
+            max_sample_prob=args.max_sample_prob,
         )
 
 

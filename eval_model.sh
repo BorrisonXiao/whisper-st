@@ -30,26 +30,29 @@ SECONDS=0
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/st/lora
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/asr/lora
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-all_sp/st/lora
-_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/mtl/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_medium_merged/spa/train-cts_sp/bmtl/none/checkpoint-800
+_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-cts_sp/st/lora
 task=st
 # src_langs=all
 # src_langs="ara cmn rus spa"
 # src_langs="ara cmn kor"
 # src_langs="rus spa"
-src_langs="ara"
+src_langs="spa"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
 outdir=/exp/cxiao/scale23/multi_st_decode
-inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
 inference_batch_size=20
 inference_nj=8
 merge_decode=true
 merge_utt=true
 valid_set=dev1
 extra_valid_set=dev2
-merged_data_base=/exp/cxiao/scale23/merged_data_base
-dumpdir=/exp/cxiao/scale23/dump_scale23
+# merged_data_base=/exp/cxiao/scale23/merged_data_base
+merged_data_base=/exp/cxiao/scale23/bmtl_data_base
+# dumpdir=/exp/cxiao/scale23/dump_scale23
+dumpdir=/exp/cxiao/scale23/dump_joint
 feats_type=raw
-hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+# hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
 org_hf_datadir=/exp/cxiao/scale23/hf_data
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 evaldir=evaluation
@@ -57,6 +60,7 @@ scoredir=/exp/cxiao/scale23/scores_multilingual
 sclite_path=sclite
 debug=false
 eval_cer=false
+tf=false
 stage=1
 stop_stage=2
 
@@ -67,7 +71,12 @@ stop_stage=2
 
 # Parse the _modeldir to get the train_set and peft_method
 peft_method=${_modeldir##*/}
-_path=${_modeldir%/*}
+_path=${_modeldir}
+if [ "${peft_method}" != none ] && [ "${peft_method}" != lora ] && [ "${peft_method}" != qlora ]; then
+    _path=${_modeldir%/*}
+    peft_method=${_path##*/}
+fi
+_path=${_path%/*}
 train_obj=${_path##*/}
 _path=${_path%/*}
 train_set=${_path##*/}
@@ -92,6 +101,16 @@ if "${mtl}"; then
     _mtlprefix=mtl_
 fi
 
+bmtl=false
+if [[ "${_modeldir}" == *"/bmtl/"* ]]; then
+    bmtl=true
+fi
+
+_mtlprefix=
+if "${bmtl}"; then
+    _mtlprefix=bmtl_
+fi
+
 decode_suf="_org"
 if "${merge_decode}"; then
     decode_suf="_merged"
@@ -99,6 +118,11 @@ fi
 train_suf="/org"
 if "${merge_utt}"; then
     train_suf="/merged"
+fi
+
+inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
+if "${tf}" && [ "${task}" == "bmtl" ]; then
+    inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference_tf.py
 fi
 
 declare -A testset_dict
@@ -146,7 +170,8 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
         test_sets=${testset_dict[${src_lang}]}
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set} ${extra_valid_set}; do
-            for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
+        for dset in ${extra_valid_set}; do
             log "Running inference for ${src_lang} ${dset}"
             _logdir="${logdir}/inference_${_mtlprefix}${task}/${train_lang}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
             mkdir -p "${_logdir}"
@@ -176,14 +201,20 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                     -o "${_dsetdir}"
             else
                 _dsetdir=${data_feats}${_suf}/${dset}
+
                 # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
                 if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
-                    mkdir -p "${_dsetdir}"
-                    _orgdir=${data_feats}${_suf}/dev
-                    pyscripts/utils/filter_dev.py \
-                        -i "${_orgdir}/wav_raw.scp" \
-                        -o "${_dsetdir}/wav_raw.scp" \
-                        -r /exp/scale23/data/3-way/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm
+                    # If ${data_feats}/${dset} exists, create a symlink to it
+                    if [[ -d "${data_feats}/${dset}" ]]; then
+                        ln -s ${data_feats}/${dset} ${_dsetdir}
+                    else
+                        mkdir -p "${_dsetdir}"
+                        _orgdir=${data_feats}${_suf}/dev
+                        pyscripts/utils/filter_dev.py \
+                            -i "${_orgdir}/wav_raw.scp" \
+                            -o "${_dsetdir}/wav_raw.scp" \
+                            -r /exp/scale23/data/3-way/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm
+                    fi
                 fi
             fi
 
@@ -224,6 +255,8 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 
             if [ "${task}" == "st" ]; then
                 opts+=" --task translate "
+            elif [ "${task}" == "bmtl" ]; then
+                opts+=" --task bmtl "
             fi
 
             if "${debug}"; then
@@ -272,7 +305,8 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
         test_sets=${testset_dict[${src_lang}]}
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
-        for dset in ${test_sets}; do
+        # for dset in ${test_sets}; do
+        for dset in ${extra_valid_set}; do
             # for dset in ${valid_set} ${extra_valid_set}; do
             log "Running ${task} evaluation on ${dset}..."
 

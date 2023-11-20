@@ -10,9 +10,9 @@ set -o pipefail
 
 # Change the following according to your experiments
 # src_lang=kor
-src_lang=ara
+# src_lang=ara
 # src_lang=cmn
-# src_lang=spa
+src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
@@ -37,18 +37,21 @@ bayes_mtl=true                 # Whether to use Bayesian decomposition for the m
 normalize_text=false           # Whether or not to normalize the text at training time
 master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
-merge_decode=true              # Whether to merge the utterances at decoding time
+merge_decode=false             # Whether to merge the utterances at decoding time
 skip_data_prep=true            # Whether to skip data preparation
+mask_asr_hyp=true              # Whether to mask the ASR hypothesis at BMTL training time
+min_sample_prob=0.5            # The minimum probability for sampling the BMTL ASR hypothesis
+max_sample_prob=0.6            # The maximum probability for sampling the BMTL ASR hypothesis (0.0 means disable sampling)
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 # The database for storing merged data
-merged_data_base=/exp/cxiao/scale23/merged_data_base
+merged_data_base=/exp/cxiao/scale23/bmtl_data_base
 
 opts=
 data_opts=
 if "${debug}"; then
-    model=large-v2 # base, large, large-v2 etc.
+    model=medium # base, large, large-v2 etc.
     asr_config=conf/tuning/whisper-debug.yaml
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
@@ -57,7 +60,11 @@ else
     model=large-v2 # base, large, large-v2 etc.
     asr_config=conf/tuning/asr_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     st_config=conf/tuning/st_${model}_${src_lang}_${peft_method}_${train_set}.yaml
-    mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+    if "${bayes_mtl}"; then
+        mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+    else
+        mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+    fi
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
@@ -68,6 +75,8 @@ if [ ${model} == "large-v2" ]; then
     inference_batch_size=32
 elif [ ${model} == "medium" ]; then
     inference_batch_size=48
+elif [ ${model} == "tiny" ]; then
+    inference_batch_size=128
 fi
 
 if "${merge_utt}"; then
@@ -81,7 +90,11 @@ if [ -n "${dialect}" ]; then
     _lang=${dialect}
 fi
 asr_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/asr/${peft_method}/logdir/eval_preds.txt
-st_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/st/${peft_method}/logdir/eval_preds.txt
+if "${bayes_mtl}"; then
+    st_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/bmtl/${peft_method}/logdir/eval_preds.txt
+else
+    st_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/st/${peft_method}/logdir/eval_preds.txt
+fi
 
 if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
@@ -93,16 +106,27 @@ fi
 if [ -n "${st_save_eval_preds}" ]; then
     opts+=" --st_save_eval_preds ${st_save_eval_preds} "
 fi
+opts+=" --mask_asr_hyp ${mask_asr_hyp}"
+opts+=" --min_sample_prob ${min_sample_prob} "
+opts+=" --max_sample_prob ${max_sample_prob} "
 
 declare -A testset_dict
 
+# testset_dict+=(
+#     ["ara"]="iwslt22_test fleurs_test"
+#     ["cmn"]="bbn_cts_bolt_test fleurs_test"
+#     ["kor"]="uhura_test fleurs_test"
+#     ["rus"]="uhura_test fleurs_test"
+#     ["spa"]="fisher_test callhome_test fleurs_test"
+#     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
+
 testset_dict+=(
-    ["ara"]="iwslt22_test fleurs_test"
-    ["cmn"]="bbn_cts_bolt_test fleurs_test"
-    ["kor"]="uhura_test fleurs_test"
-    ["rus"]="uhura_test fleurs_test"
-    ["spa"]="fisher_test callhome_test fleurs_test"
-    ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
+    ["ara"]="iwslt22_test"
+    ["cmn"]="bbn_cts_bolt_test"
+    ["kor"]="uhura_test"
+    ["rus"]="uhura_test"
+    ["spa"]="fisher_test"
+    ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
 # test_set="fleurs_test"
