@@ -3,4 +3,4 @@
 if [ -z "${PS1:-}" ]; then
     PS1=__dummy__
 fi
-. /home/hltcoe/cxiao/research/espnet-st/tools/miniconda/etc/profile.d/conda.sh && conda deactivate && conda activate hf
+. /home/cxiao7/miniconda3/etc/profile.d/conda.sh && conda deactivate && conda activate scale

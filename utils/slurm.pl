@@ -188,7 +188,7 @@ option num_threads=* --cpus-per-task $0 --ntasks-per-node=1
 option num_threads=1 --cpus-per-task 1  --ntasks-per-node=1 # Do not add anything to qsub_opts
 default gpu=0
 option gpu=0 -p shared
-option gpu=* -p gpu --gres=gpu:$0 --time 4:0:0  # this has to be figured out
+option gpu=* --partition=reserve_q --account=reserve --gres=gpu:$0 --time 4:0:0  # this has to be figured out
 EOF
 
 # note: the --max-jobs-run option is supported as a special case

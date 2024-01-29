@@ -1,0 +1,55 @@
+;;  File: sp971119.glm
+;;  Desc: This file contains the transcript filtering rules for the ARPA
+;;        Spanish Hub4-NE and Spanish Hub5-NE Evaluation.
+;;
+;;  Date: 970904
+;;         - initial creation 
+;;  Date: 971119
+;;         - Commented out HA as a valid hesitation
+;;
+;;  Hesitation mappings
+%AAA      =>  %HESITATION     / [ ] __ [ ]
+%AH       =>  %HESITATION     / [ ] __ [ ]
+%AMM      =>  %HESITATION     / [ ] __ [ ]
+%EEE      =>  %HESITATION     / [ ] __ [ ]
+%EH       =>  %HESITATION     / [ ] __ [ ]
+%EMM      =>  %HESITATION     / [ ] __ [ ]
+%EY       =>  %HESITATION     / [ ] __ [ ]
+;; Removed because ha is a conjugated form of haber
+;; %HA       =>  %HESITATION     / [ ] __ [ ]
+%HM       =>  %HESITATION     / [ ] __ [ ]
+%III      =>  %HESITATION     / [ ] __ [ ]
+%IMM      =>  %HESITATION     / [ ] __ [ ]
+%MMH      =>  %HESITATION     / [ ] __ [ ]
+%MMM      =>  %HESITATION     / [ ] __ [ ]
+%OH       =>  %HESITATION     / [ ] __ [ ]
+%OY       =>  %HESITATION     / [ ] __ [ ]
+%PFF      =>  %HESITATION     / [ ] __ [ ]
+%PSS      =>  %HESITATION     / [ ] __ [ ]
+%SHH      =>  %HESITATION     / [ ] __ [ ]
+%UF       =>  %HESITATION     / [ ] __ [ ]
+%UH       =>  %HESITATION     / [ ] __ [ ]
+%UY       =>  %HESITATION     / [ ] __ [ ]
+;;
+AAA      =>  %HESITATION     / [ ] __ [ ]
+AH       =>  %HESITATION     / [ ] __ [ ]
+AMM      =>  %HESITATION     / [ ] __ [ ]
+EEE      =>  %HESITATION     / [ ] __ [ ]
+EH       =>  %HESITATION     / [ ] __ [ ]
+EMM      =>  %HESITATION     / [ ] __ [ ]
+EY       =>  %HESITATION     / [ ] __ [ ]
+;; Removed because ha is a conjugated form of haber
+;; HA       =>  %HESITATION     / [ ] __ [ ]
+HM       =>  %HESITATION     / [ ] __ [ ]
+III      =>  %HESITATION     / [ ] __ [ ]
+IMM      =>  %HESITATION     / [ ] __ [ ]
+MMH      =>  %HESITATION     / [ ] __ [ ]
+MMM      =>  %HESITATION     / [ ] __ [ ]
+OH       =>  %HESITATION     / [ ] __ [ ]
+OY       =>  %HESITATION     / [ ] __ [ ]
+PFF      =>  %HESITATION     / [ ] __ [ ]
+PSS      =>  %HESITATION     / [ ] __ [ ]
+SHH      =>  %HESITATION     / [ ] __ [ ]
+UF       =>  %HESITATION     / [ ] __ [ ]
+UH       =>  %HESITATION     / [ ] __ [ ]
+UY       =>  %HESITATION     / [ ] __ [ ]
