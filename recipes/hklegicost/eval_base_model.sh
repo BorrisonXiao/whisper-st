@@ -55,8 +55,8 @@ stop_stage=2
 
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     # for dset in ${test_sets}; do
-    # for dset in ${valid_set}; do
-    for dset in ${extra_valid_set}; do
+    for dset in ${valid_set}; do
+    # for dset in ${extra_valid_set}; do
         log "Running inference for ${dset}"
         _logdir="${logdir}/inference_${task}/${dset}/"
         mkdir -p "${_logdir}"
@@ -117,7 +117,8 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "Stage 2: Run evaluation on the ${task} decoded data."
 
     # for dset in ${test_sets}; do
-    for dset in ${extra_valid_set}; do
+    for dset in ${valid_set}; do
+    # for dset in ${extra_valid_set}; do
         log "Running ${task} evaluation on ${dset}..."
 
         _dir="${outdir}/${dset}/${task}"

@@ -40,75 +40,18 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
     train_dset_dict = {}
     val_dset_dict = {}
     for lang in src_langs:
-        if mode == "mtl":
-            # For multi-task learning, the dataset will be duplicated and concatenated
-            # with the other task's dataset. Note that all both the transcript and
-            # translation will be named as "text" in the returned dataset.
-            raw_train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
-            raw_val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
-            # Rename the "transcript" column to "text" for the ASR task
-            asr_train_dset = raw_train_dset.rename_column("transcript", "text")
-            # Rename the "translation" column to "text" for the ST task
-            st_train_dset = raw_train_dset.rename_column("translation", "text")
-            st_val_dset = raw_val_dset.rename_column("translation", "text")
-            # Remove the "translation" column for the ASR task
-            asr_train_dset = asr_train_dset.remove_columns([col for col in asr_train_dset.column_names if col not in [
-                "audio", "text", "src_lang", "tgt_lang"]])
-            # Remove the "transcript" column for the ST task
-            st_train_dset = st_train_dset.remove_columns([col for col in st_train_dset.column_names if col not in [
-                "audio", "text", "src_lang", "tgt_lang"]])
-            st_val_dset = st_val_dset.remove_columns([col for col in st_val_dset.column_names if col not in [
-                "audio", "text", "src_lang", "tgt_lang"]])
-            train_dset_dict[f"{lang}_asr"] = asr_train_dset
-            train_dset_dict[f"{lang}_st"] = st_train_dset
-            val_dset_dict[f"{lang}_st"] = st_val_dset
-        elif mode == "asr":
-            if lang == "eng":
-                # Using librispeech-100 for debugging
-                train_dset = load_dataset(
-                    "librispeech_asr", "clean", split="train.100")
-                val_dset = load_dataset(
-                    "librispeech_asr", "clean", split="validation")
-                train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
-                    "audio", "text"]])
-                val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
-                    "audio", "text"]])
-                train_dset_dict[f"{lang}_{mode}"] = train_dset
-                val_dset_dict[f"{lang}_{mode}"] = val_dset
-            else:
-                # For ASR, we only need the transcript
-                train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
-                val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
-                # Rename the "transcript" column to "text"
-                train_dset = train_dset.rename_column("transcript", "text")
-                val_dset = val_dset.rename_column("transcript", "text")
-                # Remove the "translation" column
-                train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
-                    "audio", "text", "src_lang", "tgt_lang"]])
-                val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
-                    "audio", "text", "src_lang", "tgt_lang"]])
-                # TODO: For ASR, it might be better to convert tgt_lang to src_lang.
-                # Not doing this for now due to permission issues.
-                # train_dset = train_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
-                # val_dset = val_dset.map(lambda x: {"tgt_lang": x["src_lang"]})
-                train_dset_dict[f"{lang}_{mode}"] = train_dset
-                val_dset_dict[f"{lang}_{mode}"] = val_dset
-        elif mode == "st":
-            # For ST, we only need the translation
-            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
-            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
-            # Rename the "translation" column to "text"
-            train_dset = train_dset.rename_column("translation", "text")
-            val_dset = val_dset.rename_column("translation", "text")
-            # Remove the "translation" column
-            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
-                "audio", "text", "src_lang", "tgt_lang"]])
-            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
-                "audio", "text", "src_lang", "tgt_lang"]])
-            train_dset_dict[f"{lang}_{mode}"] = train_dset
-            val_dset_dict[f"{lang}_{mode}"] = val_dset
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
+        # For prompted multi-task learning, the dataset will not be duplicated
+        # nor concatenated. Instead, the transcript and translation will be
+        # kept in separate columns.
+        train_dset = load_from_disk(hf_datadir / f"{train_set}")
+        val_dset = load_from_disk(hf_datadir / f"{dev_name}")
+        train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+            "audio", "transcript", "translation", "src_lang", "tgt_lang"]])
+        # Note that the "transcript" column is kept in case we want to evaluate on ASR at training time
+        val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+            "audio", "transcript", "translation", "src_lang", "tgt_lang"]])
+        train_dset_dict[f"{lang}_{mode}"] = train_dset
+        val_dset_dict[f"{lang}_{mode}"] = val_dset
 
     return train_dset_dict, val_dset_dict
 
@@ -158,10 +101,23 @@ def prepare_dataset(
                 if not on_the_fly_feat_extraction:
                     batch["input_features"] = processor.feature_extractor(
                         audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
-                text = std(batch["text"]).strip(
-                ) if normalize_text else batch["text"]
-                batch["labels"] = processor.tokenizer(text).input_ids
-                batch["labels_length"] = len(batch["labels"])
+                        
+                scp = std_basic(batch["transcript"]).strip(
+                ) if normalize_text else batch["transcript"]
+                translation = std_eng(batch["translation"]).strip(
+                ) if normalize_text else batch["translation"]
+                if mode == "pmtl":
+                    batch["labels_src"] = processor.tokenizer(scp).input_ids
+                    batch["labels_tgt"] = processor_eng.tokenizer(translation).input_ids
+                    batch["labels_src_length"] = len(batch["labels_src"])
+                    batch["labels_tgt_length"] = len(batch["labels_tgt"])
+                else:
+                    if mode == "asr":
+                        text = scp
+                    else:
+                        text = translation
+                    batch["labels"] = processor.tokenizer(text).input_ids
+                    batch["labels_length"] = len(batch["labels"])
                 return batch
 
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
@@ -444,10 +400,12 @@ def finetune(
         # Perform the traditional-to-simplified conversion for Chinese anyways
         # Also, due to the training set, some normalization is needed for Chinese
         if tgt_lang == "cmn":
-            pred_str = [chinese_converter.to_simplified(
-                char) for char in pred_str]
-            label_str = [chinese_converter.to_simplified(
-                char) for char in label_str]
+            # For the LegiCoST dataset, the Chinese text is in traditional Chinese
+            # pred_str = [chinese_converter.to_simplified(
+            #     char) for char in pred_str]
+            # label_str = [chinese_converter.to_simplified(
+            #     char) for char in label_str]
+            
             # Lowercase the English text for Chinese
             pred_str = [pred.lower() for pred in pred_str]
             label_str = [label.lower() for label in label_str]
@@ -664,7 +622,6 @@ def main():
                         choices=["lora", "qlora", None],
                         help="Which PEFT method to use")
     parser.add_argument("--dev-name", type=str, default="dev",
-                        choices=["dev", "dev1", "dev2"],
                         help="Name of the dev set, e.g. dev, dev1, dev2")
     parser.add_argument("--feat-extraction", action="store_true",
                         help="If true, only perform feature extraction")

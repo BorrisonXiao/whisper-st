@@ -1,0 +1,41 @@
+Seq2SeqTrainingArguments:
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1
+  warmup_steps: 2000
+  max_steps: 32000
+  learning_rate: 1e-5
+  weight_decay: 1e-2
+  fp16: True
+  predict_with_generate: True
+  generation_max_length: 128
+  logging_steps: 50
+  report_to: ["tensorboard"]
+  evaluation_strategy: "steps"
+  eval_steps: 1000
+  save_strategy: "steps"
+  save_steps: 1000
+  load_best_model_at_end: False
+  gradient_checkpointing: True
+  save_total_limit: 4
+  metric_for_best_model: "sacrebleu"
+  greater_is_better: True
+  remove_unused_columns: False
+
+LoraConfig:
+  r: 256
+  lora_alpha: 256
+  lora_dropout: 0.1
+  target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)|(.*(fc1|fc2).*)$"
+
+WhisperConfig:
+  apply_spec_augment: True
+  mask_feature_prob: 0.1
+  mask_time_prob: 0.05
+
+QuantizationConfig:
+  load_in_4bit: True
+  load_in_8bit: False
+  bnb_4bit_compute_dtype: "bf16"
+  bnb_4bit_use_double_quant: True
+  bnb_4bit_quant_type: "nf4"
