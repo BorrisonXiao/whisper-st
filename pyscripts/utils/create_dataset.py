@@ -12,12 +12,19 @@ from pathlib import Path
 # Constants
 AUDIO_SAMPLING_RATE = 16000
 TARGET_LANGUAGE = 'eng'
+# IGNORE_LIST = [
+#     'ara.train-all_sp', 'ara.train-cts_sp', 'ara.iwslt22_test', 'ara.fleurs_test',
+#     'cmn.train-all_sp', 'cmn.train-cts_sp', 'cmn.bbn_cts_bolt_test', 'cmn.fleurs_test',
+#     'kor.train-all_sp', 'kor.train-cts_sp',  'kor.fleurs_test', 'kor.uhura_test',
+#     'rus.train-all_sp', 'rus.train-cts_sp', 'rus.uhura_test', 'rus.fleurs_test',
+#     'spa.train-all_sp', 'spa.train-cts_sp', 'spa.dev2', 'spa.dev1', 'spa.callhome_test', 'spa.fleurs_test',
+# ]
 IGNORE_LIST = [
-    'ara.train-all_sp', 'ara.train-cts_sp', 'ara.iwslt22_test', 'ara.fleurs_test',
-    'cmn.train-all_sp', 'cmn.train-cts_sp', 'cmn.bbn_cts_bolt_test', 'cmn.fleurs_test',
-    'kor.train-all_sp', 'kor.train-cts_sp',  'kor.fleurs_test', 'kor.uhura_test',
-    'rus.train-all_sp', 'rus.train-cts_sp', 'rus.uhura_test', 'rus.fleurs_test',
-    'spa.train-all_sp', 'spa.train-cts_sp', 'spa.fisher_test', 'spa.callhome_test', 'spa.fleurs_test',
+    'ara.train-all_sp', 'ara.train-cts_sp',
+    'cmn.train-all_sp', 'cmn.train-cts_sp',
+    'kor.train-all_sp', 'kor.train-cts_sp',
+    'rus.train-all_sp', 'rus.train-cts_sp',
+    'spa.train-all_sp', 'spa.train-cts_sp',
 ]
 
 # Read stm file for transcript and translation respectively
@@ -176,31 +183,48 @@ def process_lines(wav_file, transcript_file, translation_file):
         # Returns list of tuples containing lines from wav, transcript and translation files
     """
     reordered_lines = []
+    # with open(wav_file, mode="r") as w_f, open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
+    #     for wav_line, transcript_line, translation_line in zip(w_f, t_f, tr_f):
+    #         wav_line, transcript_line, translation_line = wav_line.strip(
+    #         ), transcript_line.strip(), translation_line.strip()
+    #         utterance_id, wav_file_path = wav_line.split()
+    #         transcript_key, transcript = transcript_line.split(
+    #         )[0], " ".join(transcript_line.split()[1:])
+    #         translation_key, translation = translation_line.split(
+    #         )[0], " ".join(translation_line.split()[1:])
+
+    #         while utterance_id != transcript_key != translation_key:
+    #             with open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
+    #                 for t_line, tr_line in zip(t_f, tr_f):
+    #                     t_line, tr_line = t_line.strip(), tr_line.strip()
+    #                     transcript_key, transcript = t_line.split(
+    #                     )[0], " ".join(t_line.split()[1:])
+    #                     translation_key, translation = tr_line.split(
+    #                     )[0], " ".join(tr_line.split()[1:])
+    #                     if utterance_id == transcript_key == translation_key:
+    #                         transcript_line, translation_line = t_line, tr_line
+    #                         break
+
+    #         reordered_lines.append(
+    #             (wav_line, transcript_line, translation_line))
+    #         logging.debug(reordered_lines[:3])
+    res = {}
     with open(wav_file, mode="r") as w_f, open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
-        for wav_line, transcript_line, translation_line in zip(w_f, t_f, tr_f):
-            wav_line, transcript_line, translation_line = wav_line.strip(
-            ), transcript_line.strip(), translation_line.strip()
-            utterance_id, wav_file_path = wav_line.split()
-            transcript_key, transcript = transcript_line.split(
-            )[0], " ".join(transcript_line.split()[1:])
-            translation_key, translation = translation_line.split(
-            )[0], " ".join(translation_line.split()[1:])
+        for line in w_f:
+            line = line.strip()
+            utterance_id, wav_file_path = line.split()
+            res[utterance_id] = {"wav_line": line}
+        for line in t_f:
+            line = line.strip()
+            transcript_key, transcript = line.split()[0], " ".join(line.split()[1:])
+            res[transcript_key]["transcript_line"] = line
+        for line in tr_f:
+            line = line.strip()
+            translation_key, translation = line.split()[0], " ".join(line.split()[1:])
+            res[translation_key]["translation_line"] = line
 
-            while utterance_id != transcript_key != translation_key:
-                with open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
-                    for t_line, tr_line in zip(t_f, tr_f):
-                        t_line, tr_line = t_line.strip(), tr_line.strip()
-                        transcript_key, transcript = t_line.split(
-                        )[0], " ".join(t_line.split()[1:])
-                        translation_key, translation = tr_line.split(
-                        )[0], " ".join(tr_line.split()[1:])
-                        if utterance_id == transcript_key == translation_key:
-                            transcript_line, translation_line = t_line, tr_line
-                            break
-
-            reordered_lines.append(
-                (wav_line, transcript_line, translation_line))
-            logging.debug(reordered_lines[:3])
+    for key, value in res.items():
+        reordered_lines.append((value["wav_line"], value["transcript_line"], value["translation_line"]))
 
     return reordered_lines
 
@@ -345,6 +369,8 @@ def create_dataset_from_wav_text_files(directory: str) -> Dict[str, Dataset]:
     with ProcessPoolExecutor() as executor:
         for text_file_name, dataset in executor.map(process_wav_text_file, wav_text_files):
             hf_datasets[text_file_name] = dataset
+    # for (text_file_name, dataset) in process_wav_text_file(wav_text_files[0]):
+    #     hf_datasets[text_file_name] = dataset
 
     return hf_datasets
 

@@ -27,7 +27,19 @@ LANGS = {
 }
 
 
-def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrained_model=None, peft_model=None, task="transcribe", batch_size=1):
+def inference(
+    keyfile,
+    dset,
+    src_lang,
+    tgt_lang,
+    output_dir,
+    model_name,
+    pretrained_model=None,
+    peft_model=None,
+    task="transcribe",
+    batch_size=1,
+    num_beams=2,
+    ):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # Load model and processor
@@ -91,7 +103,7 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
                 input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
             # Generate token ids
             predicted_ids = model.generate(
-                input_features, forced_decoder_ids=forced_decoder_ids)
+                input_features, forced_decoder_ids=forced_decoder_ids, num_beams=num_beams)
             # Decode token ids to text
             hyps = processor.batch_decode(
                 predicted_ids, skip_special_tokens=True)
@@ -129,6 +141,8 @@ def main():
                         help="Path to the PEFT model, note that this will override the pretrained model")
     parser.add_argument("--model_name", type=str, default="tiny")
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-beams", type=int, default=2,
+                        help="Number of beams for the inference")
 
     args = parser.parse_args()
     inference(keyfile=args.keyfile,
@@ -140,7 +154,8 @@ def main():
               task=args.task,
               pretrained_model=args.pretrained_model,
               peft_model=args.peft_model,
-              batch_size=args.batch_size)
+              batch_size=args.batch_size,
+              num_beams=args.num_beams)
 
 
 if __name__ == "__main__":

@@ -10,9 +10,9 @@ set -o pipefail
 
 # Change the following according to your experiments
 # src_lang=kor
-src_lang=ara
+# src_lang=ara
 # src_lang=cmn
-# src_lang=spa
+src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
@@ -26,8 +26,8 @@ train_set=train-cts
 train_dev=dev1
 extra_dev=dev2
 
-# debug=true
-debug=false
+debug=true
+# debug=false
 
 ds_config=conf/tuning/ds2.json # The deepspeed configuration file
 merge_utt=true                 # Whether to merge utterances for training. This is particularly important for finetuning.
@@ -48,7 +48,7 @@ merged_data_base=/exp/cxiao/scale23/merged_data_base
 opts=
 data_opts=
 if "${debug}"; then
-    model=large-v2 # base, large, large-v2 etc.
+    model=tiny # base, large, large-v2 etc.
     asr_config=conf/tuning/whisper-debug.yaml
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
@@ -67,6 +67,8 @@ fi
 if [ ${model} == "large-v2" ]; then
     inference_batch_size=32
 elif [ ${model} == "medium" ]; then
+    inference_batch_size=48
+else
     inference_batch_size=48
 fi
 

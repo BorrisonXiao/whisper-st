@@ -10,8 +10,7 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import load_from_disk, concatenate_datasets, load_dataset
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer, EnglishTextNormalizer
-from transformers.models.whisper.tokenization_whisper import TASK_IDS, TO_LANGUAGE_CODE
-from peft.tuners.lora import LoraLayer
+from transformers.models.whisper.tokenization_whisper import TO_LANGUAGE_CODE
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 import evaluate
@@ -21,6 +20,10 @@ import json
 from functools import partial
 import chinese_converter
 import re
+from transformers.trainer_callback import (
+    TrainerCallback,
+)
+from transformers.trainer_whisper import _schedule_dynamic_mtl_weight
 
 
 LANGS = {
@@ -62,6 +65,19 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
             train_dset_dict[f"{lang}_asr"] = asr_train_dset
             train_dset_dict[f"{lang}_st"] = st_train_dset
             val_dset_dict[f"{lang}_st"] = st_val_dset
+        elif mode == "pmtl":
+            # For prompted multi-task learning, the dataset will not be duplicated
+            # nor concatenated. Instead, the transcript and translation will be
+            # kept in separate columns.
+            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                "audio", "transcript", "translation", "src_lang", "tgt_lang"]])
+            # Note that the "transcript" column is kept in case we want to evaluate on ASR at training time
+            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                "audio", "transcript", "translation", "src_lang", "tgt_lang"]])
+            train_dset_dict[f"{lang}_{mode}"] = train_dset
+            val_dset_dict[f"{lang}_{mode}"] = val_dset
         elif mode == "asr":
             if lang == "eng":
                 # Using librispeech-100 for debugging
@@ -124,6 +140,7 @@ def prepare_dataset(
         on_the_fly_feat_extraction=False,
         train=True,
         multilingual=False,
+        _processor=None,
 ):
     processed_dset_list = []
     processed_dset_dict = {}
@@ -146,22 +163,51 @@ def prepare_dataset(
                     f"{lang}.{dset_type}.{mode}"
                 logging.warning(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
-            if mode == "asr":
-                std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
-            else:
-                std = EnglishTextNormalizer({})
+
             processor = WhisperProcessor.from_pretrained(
-                f"openai/whisper-{model_name}", language=LANGS[lang], task="transcribe" if mode == "asr" else "translate")
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode == "st" else "transcribe") if not _processor else _processor
+
+            if mode == "pmtl":
+                if normalize_text:
+                    std_basic = BasicTextNormalizer()
+                    std_eng = EnglishTextNormalizer({})
+                processor_eng = WhisperProcessor.from_pretrained(
+                    f"openai/whisper-{model_name}", language=LANGS[lang], task="translate")
 
             def _prepare_dataset(batch):
                 audio = batch["audio"]
                 if not on_the_fly_feat_extraction:
                     batch["input_features"] = processor.feature_extractor(
                         audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
-                text = std(batch["text"]).strip(
-                ) if normalize_text else batch["text"]
-                batch["labels"] = processor.tokenizer(text).input_ids
-                batch["labels_length"] = len(batch["labels"])
+
+                if mode == "pmtl":
+                    scp = std_basic(batch["transcript"]).strip(
+                    ) if normalize_text else batch["transcript"]
+                    # if "train" in dset_type:
+                    if True:
+                        translation = std_eng(batch["translation"]).strip(
+                        ) if normalize_text else batch["translation"]
+                        batch["labels_src"] = processor.tokenizer(
+                            scp).input_ids
+                        batch["labels_tgt"] = processor_eng.tokenizer(
+                            translation).input_ids
+                        batch["labels_src_length"] = len(batch["labels_src"])
+                        batch["labels_tgt_length"] = len(batch["labels_tgt"])
+                    # else:
+                    #     translation = std_eng(batch["text"]).strip(
+                    #     ) if normalize_text else batch["text"]
+                    #     batch["labels"] = processor_eng.tokenizer(
+                    #         translation).input_ids
+                    #     batch["labels_length"] = len(batch["labels"])
+                else:
+                    if mode == "asr":
+                        std = BasicTextNormalizer() if lang != "eng" else EnglishTextNormalizer({})
+                    else:
+                        std = EnglishTextNormalizer({})
+                    text = std(batch["text"]).strip(
+                    ) if normalize_text else batch["text"]
+                    batch["labels"] = processor.tokenizer(text).input_ids
+                    batch["labels_length"] = len(batch["labels"])
                 return batch
 
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
@@ -177,8 +223,14 @@ def prepare_dataset(
                 """Filter label sequences longer than max length (448)"""
                 return labels_length < max_label_length
 
-            processed_dset = processed_dset.filter(filter_labels, input_columns=[
-                                                   "labels_length"])
+            if mode == "pmtl":
+                processed_dset = processed_dset.filter(filter_labels, input_columns=[
+                                                       "labels_src_length"])
+                processed_dset = processed_dset.filter(filter_labels, input_columns=[
+                                                       "labels_tgt_length"])
+            else:
+                processed_dset = processed_dset.filter(filter_labels, input_columns=[
+                    "labels_length"])
 
             if local_rank in [-1, 0] and save_feature_dir is not None:
                 if (save_feature_dir / f"{lang}.{dset_type}.{mode}").exists():
@@ -217,37 +269,67 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         batch = self.processor.feature_extractor.pad(
             input_features, return_tensors="pt")
 
-        label_features = [{"input_ids": feature["labels"]}
-                          for feature in features]
-        # Pad label ids to the max length in the batch
-        labels_batch = self.processor.tokenizer.pad(
-            label_features, return_tensors="pt")
+        asr_ref_prompt = False
+        if "labels_src" in features[0]:
+            # Flag indicating using ASR reference prompt
+            asr_ref_prompt = True
+        if asr_ref_prompt:
+            label_features_src = [{"input_ids": feature["labels_src"]}
+                                  for feature in features]
+            label_features_tgt = [{"input_ids": feature["labels_tgt"]}
+                                  for feature in features]
 
-        # Replace padding with -100 to ignore loss correctly
-        labels = labels_batch["input_ids"].masked_fill(
-            labels_batch.attention_mask.ne(1), -100)
+            labels_batch_src = self.processor.tokenizer.pad(
+                label_features_src, return_tensors="pt")
+            labels_batch_tgt = self.processor.tokenizer.pad(
+                label_features_tgt, return_tensors="pt")
 
-        # If bos token is appended in previous tokenization step,
-        # cut bos token here as it's append later anyways
-        _bos_token_id = self.processor.tokenizer.convert_tokens_to_ids(
-            "<|startoftranscript|>")
-        if (labels[:, 0] == _bos_token_id).all().cpu().item():
-            labels = labels[:, 1:]
+            labels_src = labels_batch_src["input_ids"].masked_fill(
+                labels_batch_src.attention_mask.ne(1), -100)
+            labels_tgt = labels_batch_tgt["input_ids"].masked_fill(
+                labels_batch_tgt.attention_mask.ne(1), -100)
 
-        # If dialects are provided, replace the language id with the dialect id
-        if self.dialects is not None and len(self.dialects) > 0:
-            for src_lang, dialect in self.dialects.items():
-                src_lang_token = TO_LANGUAGE_CODE[src_lang]
-                src_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
-                    f"<|{src_lang_token}|>")
-                dialect_lang_token = TO_LANGUAGE_CODE[dialect]
-                dialect_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
-                    f"<|{dialect_lang_token}|>")
-                # Replace src_lang_id with dialect_lang_id
-                labels = labels.masked_fill(
-                    labels.eq(src_lang_id), dialect_lang_id)
+            _bos_token_id = self.processor.tokenizer.convert_tokens_to_ids(
+                "<|startoftranscript|>")
+            if (labels_src[:, 0] == _bos_token_id).all().cpu().item():
+                labels_src = labels_src[:, 1:]
+            if (labels_tgt[:, 0] == _bos_token_id).all().cpu().item():
+                labels_tgt = labels_tgt[:, 1:]
 
-        batch["labels"] = labels
+            batch["labels_src"] = labels_src
+            batch["labels_tgt"] = labels_tgt
+        else:
+            label_features = [{"input_ids": feature["labels"]}
+                              for feature in features]
+            # Pad label ids to the max length in the batch
+            labels_batch = self.processor.tokenizer.pad(
+                label_features, return_tensors="pt")
+
+            # Replace padding with -100 to ignore loss correctly
+            labels = labels_batch["input_ids"].masked_fill(
+                labels_batch.attention_mask.ne(1), -100)
+
+            # If bos token is appended in previous tokenization step,
+            # cut bos token here as it's append later anyways
+            _bos_token_id = self.processor.tokenizer.convert_tokens_to_ids(
+                "<|startoftranscript|>")
+            if (labels[:, 0] == _bos_token_id).all().cpu().item():
+                labels = labels[:, 1:]
+
+            # If dialects are provided, replace the language id with the dialect id
+            if self.dialects is not None and len(self.dialects) > 0:
+                for src_lang, dialect in self.dialects.items():
+                    src_lang_token = TO_LANGUAGE_CODE[src_lang]
+                    src_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
+                        f"<|{src_lang_token}|>")
+                    dialect_lang_token = TO_LANGUAGE_CODE[dialect]
+                    dialect_lang_id = self.processor.tokenizer.convert_tokens_to_ids(
+                        f"<|{dialect_lang_token}|>")
+                    # Replace src_lang_id with dialect_lang_id
+                    labels = labels.masked_fill(
+                        labels.eq(src_lang_id), dialect_lang_id)
+
+            batch["labels"] = labels
 
         return batch
 
@@ -383,6 +465,15 @@ def finetune(
     deepspeed=None,
     save_eval_preds=None,
     dialect=None,
+    use_asr_prompt=False,
+    min_promptless_prob=0.0,
+    max_promptless_prob=0.0,
+    max_sample_prob=0.0,
+    min_sample_prob=0.0,
+    min_alpha=0.5,
+    max_alpha=0.5,
+    loss_warmup='auto',
+    loss_base=0.25,
 ):
     # Step 1: Load prepare the training/dev sets
     _train_dset, _val_dset = feat_extraction(
@@ -469,6 +560,7 @@ def finetune(
                          for i in range(len(label_str)) if len(label_str[i]) > 0]
 
         if save_eval_preds is not None:
+            Path(save_eval_preds).parent.mkdir(parents=True, exist_ok=True)
             with open(save_eval_preds, "a") as f:
                 for i, (pred, label) in enumerate(list(zip(pred_str, label_str))[:200]):
                     f.write(f"Ref: {label}\n")
@@ -563,7 +655,8 @@ def finetune(
             model = get_peft_model(model, peft_config)
             if dialect is not None:
                 # Modify the peft config so that it points to the new base model
-                model.peft_config['default'].base_model_name_or_path = str(output_dir.absolute() / "base_model")
+                model.peft_config['default'].base_model_name_or_path = str(
+                    output_dir.absolute() / "base_model")
             model.print_trainable_parameters()
             training_args.output_dir = str(output_dir)
         else:
@@ -600,6 +693,24 @@ def finetune(
         model.config.mask_feature_min_masks = _args['WhisperConfig'].get(
             "mask_feature_min_masks", 0)
 
+    class PrinterCallback(TrainerCallback):
+        def __init__(self, trainer) -> None:
+            super().__init__()
+            self._trainer = trainer
+
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if state.is_local_process_zero:
+                _alpha = _schedule_dynamic_mtl_weight(
+                    current_step=state.global_step,
+                    max_steps=state.max_steps,
+                    warmup_steps=self._trainer.loss_warmup if loss_warmup != -1 else args.warmup_steps,
+                    loss_base=self._trainer.loss_base,
+                    min_weight=self._trainer.min_alpha,
+                    max_weight=self._trainer.max_alpha,
+                )
+                logs["st_loss_weight"] = _alpha
+                print(logs)
+
     trainer = WhisperTrainer(
         model=model,
         args=training_args,
@@ -608,7 +719,19 @@ def finetune(
         tokenizer=processor,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
+        use_asr_prompt=use_asr_prompt,
+        src_lang=LANGS[src_lang],
+        eval_steps=10,
+        min_promptless_prob=min_promptless_prob,
+        max_promptless_prob=max_promptless_prob,
+        max_sample_prob=max_sample_prob,
+        min_sample_prob=min_sample_prob,
+        min_alpha=min_alpha,
+        max_alpha=max_alpha,
+        loss_warmup=loss_warmup,
+        loss_base=loss_base,
     )
+    trainer.add_callback(PrinterCallback(trainer))
 
     # Step 8: Launch training
     if resume_from_checkpoint:
@@ -643,7 +766,7 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl"],
+                        choices=["asr", "st", "mtl", "pmtl"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")
@@ -675,6 +798,29 @@ def main():
     parser.add_argument("--model_name", type=str, default="tiny")
     parser.add_argument("--dialect", type=str, default=None,
                         help="The dialect language code will be used instead of the src_lang code for training if specified.")
+    parser.add_argument("--use-asr-prompt", action="store_true",
+                        help="Whether to use the ASR hyp/ref as the prompt for the ST task.")
+    parser.add_argument("--min-promptless-prob", type=float, default=0.0,
+                        help="The minimum probability for performing promptless ST finetuning.")
+    parser.add_argument("--max-promptless-prob", type=float, default=0.0,
+                        help="The minimum probability for performing promptless ST finetuning.")
+    parser.add_argument("--min-sample-prob", type=float, default=0.0,
+                        help="Minimum sampling probability for the BMTL training.")
+    parser.add_argument("--max-sample-prob", type=float, default=0.0,
+                        help="Maximum sampling probability for the BMTL training. \
+                        Note that the sampling mechanism is disabled if this is set to 0.0.\
+                        Also note that the sampling probability will be linearly increased from min_sample_prob to max_sample_prob during the training AFTER the warmup steps.")
+    parser.add_argument("--min-alpha", type=float, default=.5,
+                        help="Minimum alpha for the PMTL training.")
+    parser.add_argument("--max-alpha", type=float, default=.5,
+                        help="Maximum alpha for the PMTL training. \
+                        Note that the ST loss weight will be constant if min_alpha == max_alpha.\
+                        Also note that the alpha will increase at logarithmically from min_alpha to max_alpha \
+                        during the training AFTER the loss_warmup steps.")
+    parser.add_argument("--loss-warmup", type=int, default=-1,
+                        help="Number of steps to warm up the loss weight for the PMTL training.")
+    parser.add_argument("--loss-base", type=float, default=.25,
+                        help="Base for the log-increase ST weight, larger means slower increases.")
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -717,6 +863,15 @@ def main():
             dev_name=args.dev_name,
             save_eval_preds=args.save_eval_preds,
             dialect=args.dialect,
+            use_asr_prompt=args.use_asr_prompt,
+            min_promptless_prob=args.min_promptless_prob,
+            max_promptless_prob=args.max_promptless_prob,
+            max_sample_prob=args.max_sample_prob,
+            min_sample_prob=args.min_sample_prob,
+            max_alpha=args.max_alpha,
+            min_alpha=args.min_alpha,
+            loss_warmup=args.loss_warmup,
+            loss_base=args.loss_base,
         )
 
 

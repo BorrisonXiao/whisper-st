@@ -24,7 +24,7 @@ if "${stm}"; then
     script=pyscripts/utils/create_dataset_stm.py
     logdir+=_stm
 fi
-${cmd} "JOB=1:1" "${logdir}/hf_datasets.JOB.log" \
+# ${cmd} "JOB=1:1" "${logdir}/hf_datasets.JOB.log" \
     ${python} ${script} \
     --raw-data-location "${raw_data_location}" \
     --output-path "${output_path}" \

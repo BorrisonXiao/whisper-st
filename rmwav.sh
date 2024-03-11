@@ -9,10 +9,10 @@ set -u
 set -o pipefail
 
 # Remove the wav files to save disk space
-src_langs="ara cmn kor rus spa"
-dset=train-all
+src_langs="spa"
+dset=train-cts
 _sp="_sp"
-dumpdir="/exp/cxiao/scale23/dump_scale23"
+dumpdir="/exp/cxiao/scale23/dump_gaussian"
 type=raw
 
 . utils/parse_options.sh
@@ -32,6 +32,10 @@ log() {
 for src_lang in ${src_langs}; do
     log "Removing the wav files in ${dumpdir}/${src_lang}/${type}/${_prefix}${dset}${_sp}/wav..."
     if [[ "${type}" == "raw" ]]; then
+        # for x in "${dumpdir}/${src_lang}/${type}/${_prefix}${dset}${_sp}"/wav/format.*; do
+        #     log "Removing the wav files in ${x}/data..."
+        #     rm -f ${x}/data/*.wav
+        # done
         rm -rf ${dumpdir}/${src_lang}/${type}/${_prefix}${dset}${_sp}/wav
     else
         rm -rf ${dumpdir}/${src_lang}/${type}/${_prefix}${dset}${_sp}/format.*/data/*.wav

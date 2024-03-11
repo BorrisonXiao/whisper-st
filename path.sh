@@ -7,7 +7,9 @@ export PATH=$PWD/utils/:$KALDI_ROOT/tools/openfst/bin:$PATH
 export LC_ALL=C
 
 . "${MAIN_ROOT}"/tools/activate_python.sh && . "${MAIN_ROOT}"/tools/extra_path.sh
-export PATH=$MAIN_ROOT/utils:$MAIN_ROOT/espnet/bin:$PATH
+# This for some reason overwrites the activate_python.sh and activates the hugging face version
+export PATH=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin:$MAIN_ROOT/utils:$MAIN_ROOT/espnet/bin:$PATH
+# export PATH=$MAIN_ROOT/utils:$MAIN_ROOT/espnet/bin:$PATH
 
 export OMP_NUM_THREADS=1
 

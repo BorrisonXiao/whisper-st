@@ -28,27 +28,31 @@ SECONDS=0
 
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/mtl/lora
 # _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/all/train-cts_sp/st/lora
-_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/asr/lora
-# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-all_sp/st/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/asr/lora
+# _modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/cmn/train-all_sp/mtl/lora
+_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-all_sp/st/lora
 task=st
 # src_langs=all
 # src_langs="ara cmn rus spa"
 # src_langs="ara cmn kor"
 # src_langs="rus spa"
-src_langs="ara"
+src_langs="cmn"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
 outdir=/exp/cxiao/scale23/multi_st_decode
 inference_tool=/home/hltcoe/cxiao/scale23/st/pyscripts/utils/hf_whisper_inference.py
-inference_batch_size=20
+inference_batch_size=16
 inference_nj=8
-merge_decode=true
+merge_decode=false
 merge_utt=true
 valid_set=dev1
 extra_valid_set=dev2
-merged_data_base=/exp/cxiao/scale23/merged_data_base
-dumpdir=/exp/cxiao/scale23/dump_scale23
+# merged_data_base=/exp/cxiao/scale23/merged_data_base
+merged_data_base=/exp/cxiao/scale23/gaussian_data_base
+# dumpdir=/exp/cxiao/scale23/dump_scale23
+dumpdir=/exp/cxiao/scale23/dump_gaussian
 feats_type=raw
-hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+# hf_datadir=/exp/cxiao/scale23/_merged_hf_data
+hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
 org_hf_datadir=/exp/cxiao/scale23/hf_data
 python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
 evaldir=evaluation
@@ -56,6 +60,7 @@ scoredir=/exp/cxiao/scale23/scores_multilingual
 sclite_path=sclite
 debug=false
 eval_cer=false
+num_beams=2
 stage=1
 stop_stage=2
 
@@ -77,9 +82,13 @@ model_info=${_path##*/}
 model_name=${model_info%_*}
 model_name=${model_name#hf_*_}
 
-if [ "${task}" == "asr" ]; then
-    merge_decode=true
-fi
+# if [ "${task}" == "asr" ]; then
+#     merge_decode=true
+# fi
+
+# The inference_batch_size is re-calculated by dividing by the num_beams
+inference_batch_size=$((inference_batch_size / num_beams))
+log "inference_batch_size: ${inference_batch_size}"
 
 mtl=false
 if [[ "${_modeldir}" == *"/mtl/"* ]]; then
@@ -124,7 +133,6 @@ testset_dict+=(
 
 if [ ${src_langs} == "all" ]; then
     src_langs="ara cmn kor rus spa"
-
 fi
 
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
@@ -238,7 +246,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                 # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
                 #       but it's used only for deciding the sample ids.
                 # shellcheck disable=SC2046,SC2086
-                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r7n07' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06\&!r8n06\&!r9n02' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
                     ${inference_tool} \
                     --keyfile ${_logdir}/decode.JOB.scp \
                     --src-lang ${src_lang} \
@@ -246,6 +254,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                     --output_dir ${_logdir}/output.JOB \
                     --pretrained-model ${_modeldir} \
                     --batch-size ${inference_batch_size} \
+                    --num-beams ${num_beams} \
                     --model_name ${model_name} ${opts}
             fi
 
