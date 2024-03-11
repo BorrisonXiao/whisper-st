@@ -37,8 +37,7 @@ prompted_mtl=true              # Whether to use the prompted multi-task learning
 normalize_text=false           # Whether or not to normalize the text at training time
 master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
-use_gpu_inference=true        # Whether to use GPU for inference
-# inference_nj=80                 # Number of jobs for decoding, note that each job will use a GPU
+use_gpu_inference=true         # Whether to use GPU for inference
 merge_decode=false             # Whether to merge the utterances at decoding time
 skip_data_prep=true            # Whether to skip data preparation
 skip_training=false            # Whether to skip training
@@ -58,9 +57,9 @@ load_model_from_path=          # The path to load the model from
 resume_from_checkpoint=        # The path to resume from a checkpoint
 
 # Modify this to your python path, this is due to some ESPNet environment issues
-python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
+python_hf=python3
 # The database for storing merged data
-merged_data_base=/exp/cxiao/scale23/gaussian_data_base
+merged_data_base=
 
 opts=
 data_opts=
@@ -69,7 +68,6 @@ if "${debug}"; then
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
-    # load_model_from_path=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/mtl/lora/merged_model
 else
     model=large-v2 # base, large, large-v2 etc.
     st_config=conf/tuning/st_${model}_${src_lang}_${peft_method}_${train_set}.yaml
@@ -81,9 +79,6 @@ else
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    # resume_from_checkpoint=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/pmtl/lora_0.2_0.8/checkpoint-800
-    # resume_from_checkpoint="/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/pmtl/lora_0.1_0.3/checkpoint-9600"
-    # load_model_from_path=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/mtl/lora/merged_model
 fi
 
 if [ ${model} == "large-v2" ]; then
@@ -136,14 +131,6 @@ opts+=" --dynamic_loss_k ${dynamic_loss_k} "
 
 declare -A testset_dict
 
-# testset_dict+=(
-#     ["ara"]="iwslt22_test fleurs_test"
-#     ["cmn"]="bbn_cts_bolt_test fleurs_test"
-#     ["kor"]="uhura_test fleurs_test"
-#     ["rus"]="uhura_test fleurs_test"
-#     ["spa"]="fisher_test callhome_test fleurs_test"
-#     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
-
 testset_dict+=(
     ["ara"]="iwslt22_test"
     ["cmn"]="bbn_cts_bolt_test"
@@ -170,7 +157,7 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
+    hf_datadir=
     datadir=data/${src_lang}
     dumpdir=dump_gaussian/${src_lang}
     opts+=' --merged_data_base '
@@ -178,7 +165,7 @@ if "${merge_utt}"; then
     data_opts+=' --merged_data_base '
     data_opts+=$merged_data_base
 else
-    hf_datadir=/exp/cxiao/scale23/hf_data
+    hf_datadir=
     datadir=data/${src_lang}
     dumpdir=dump_gaussian/${src_lang}
 fi
