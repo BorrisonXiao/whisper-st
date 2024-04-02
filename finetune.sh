@@ -141,11 +141,7 @@ if [ $# -ne 0 ]; then
     exit 2
 fi
 
-if [ "${framework}" == "huggingface" ]; then
-    . ./path_hf.sh
-else
-    . ./path.sh
-fi
+. ./path.sh
 . ./cmd.sh
 
 # Check required arguments
@@ -196,13 +192,6 @@ if [ -z "${st_exp}" ]; then
 fi
 
 # ========================== Main stages start from here. ==========================
-
-# Re-check if the training set needs the "_sp" suffix, note that this is to
-# accommodate the "skip_data_prep" mode, i.e. if the suffix is there already,
-# don't add it again.
-if [ -n "${speed_perturb_factors}" ] && ! echo "${train_set}" | grep -q "_sp"; then
-    train_set="${train_set}_sp"
-fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
     log "Stage 7: Run ASR finetuning on the training data"
