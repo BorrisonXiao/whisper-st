@@ -27,8 +27,22 @@ LANGS = {
 }
 
 
-def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrained_model=None, peft_model=None, task="transcribe", batch_size=1):
+def inference(
+    keyfile,
+    dset,
+    src_lang,
+    tgt_lang,
+    output_dir,
+    model_name,
+    pretrained_model=None,
+    peft_model=None,
+    task="transcribe",
+    pseudo_st=False,
+    batch_size=1,
+    num_beams=2,
+):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f"Decoding with batch_size={batch_size}, num_beams={num_beams} on {device}")
 
     # Load model and processor
     if peft_model is not None:
@@ -45,14 +59,16 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
             model = WhisperForConditionalGeneration.from_pretrained(
                 pretrained_model).to(device)
         else:
-            print(f"Loading model from huggingface openai/whisper-{model_name}")
+            print(
+                f"Loading model from huggingface openai/whisper-{model_name}")
             processor = WhisperProcessor.from_pretrained(
                 f"openai/whisper-{model_name}")
             model = WhisperForConditionalGeneration.from_pretrained(
                 f"openai/whisper-{model_name}").to(device)
 
     forced_decoder_ids = processor.get_decoder_prompt_ids(
-        language=src_lang, task=task)
+        language=src_lang, task=task) if not pseudo_st else processor.get_decoder_prompt_ids(language=tgt_lang, task="transcribe")
+
     print(f"model.device: {model.device}")
     print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
 
@@ -91,7 +107,7 @@ def inference(keyfile, dset, src_lang, tgt_lang, output_dir, model_name, pretrai
                 input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
             # Generate token ids
             predicted_ids = model.generate(
-                input_features, forced_decoder_ids=forced_decoder_ids)
+                input_features, forced_decoder_ids=forced_decoder_ids, num_beams=num_beams)
             # Decode token ids to text
             hyps = processor.batch_decode(
                 predicted_ids, skip_special_tokens=True)
@@ -123,12 +139,16 @@ def main():
     parser.add_argument("--task", type=str, default="transcribe",
                         choices=["transcribe", "translate"],
                         help="Task to perform")
+    parser.add_argument("--pseudo-st", action="store_true",
+                        help="Use pseudo translation, i.e. the tag is transcribe.")
     parser.add_argument("--pretrained-model", type=Path, default=None,
                         help="Path to the pretrained (finetuned) model, if not specified, the model will be loaded from HuggingFace")
     parser.add_argument("--peft-model", type=Path, default=None,
                         help="Path to the PEFT model, note that this will override the pretrained model")
     parser.add_argument("--model_name", type=str, default="tiny")
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--num-beams", type=int, default=2,
+                        help="Number of beams for the inference")
 
     args = parser.parse_args()
     inference(keyfile=args.keyfile,
@@ -138,9 +158,11 @@ def main():
               output_dir=args.output_dir,
               model_name=args.model_name,
               task=args.task,
+              pseudo_st=args.pseudo_st,
               pretrained_model=args.pretrained_model,
               peft_model=args.peft_model,
-              batch_size=args.batch_size)
+              batch_size=args.batch_size,
+              num_beams=args.num_beams)
 
 
 if __name__ == "__main__":

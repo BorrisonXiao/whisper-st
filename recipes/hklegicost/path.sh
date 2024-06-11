@@ -19,3 +19,6 @@ export NCCL_SOCKET_IFNAME="^lo,docker,virbr,vmnet,vboxnet"
 # NOTE(kamo): Source at the last to overwrite the setting
 # NOTE(Cihan): No need to install moses for the whisper finetuning task
 # . local/path.sh
+
+module purge
+module load cuda/11.7

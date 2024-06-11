@@ -1,0 +1,20 @@
+glm line * name "en971128.glm" (14) does not match regex
+glm line * desc "The Universal GLM file for the ARPA Hub4-E and Hub5-E Eval Test Alternate Spellings and Contractions Map" (15) does not match regex
+glm line * format = 'NIST1' (16) does not match regex
+glm line * max_nrules = '1512' (17) does not match regex
+glm line * copy_no_hit = 'T' (18) does not match regex
+glm line * case_sensitive = 'F' (19) does not match regex
+glm line DOWN SYNDROME      => DOWN'S SYNDROME ;; per AHD (63) does not match regex
+glm line FT SE              => FOOTSIE ;; officially spelled w/hyphen (80) does not match regex
+glm line GOOD BY            => GOOD BYE ;; per AHD (actually "good-by") (89) does not match regex
+glm line [CANNOT ]            => [CAN NOT ] (188) does not match regex
+glm line [GOODMORNING AMERICA ] => [GOOD MORNING AMERICA ] ;; see it both ways on Web (193) does not match regex
+glm line [TRAINSPOTTING ]     => [TRAIN SPOTTING ] (195) does not match regex
+glm line NETAN YAHU'S      => NETANYAHU'S      / [ ] __ [ ] (327) does not match regex
+glm line  (464) does not match regex
+glm line ELLEN PORE         => AMANPOUR         / [ ] __ [ ] ;; Christiane __, CNN reporter (516) does not match regex
+glm line POLY CLASS         => POLLY KLAAS      / [ ] __ [ ] (607) does not match regex
+glm line ROL AND            => ROLAND           / [ ] __ [ ] ;; "__ Dickey insists that beef is better" (f960613) (623) does not match regex
+glm line  (745) does not match regex
+glm line  (1636) does not match regex
+glm line  (1687) does not match regex

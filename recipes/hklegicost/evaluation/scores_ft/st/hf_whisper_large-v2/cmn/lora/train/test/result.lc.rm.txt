@@ -1,0 +1,5 @@
+Case insensitive BLEU result (single-reference)
+24.7593
+0.54157
+0.6797
+

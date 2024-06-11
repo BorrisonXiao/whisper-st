@@ -25,13 +25,15 @@ SECONDS=0
 # General options
 src_lang=ara
 score_dir=scores # Top directory to store results
+model_tag=base   # Place holder for api consistency
+merge_utt=false
 python=python3
 hyp_mt=
 arabic=false
 dset=
-data_base_dir=
-stereo=true
 framework=openai
+data_base_dir=/exp/scale23/data/3-way
+tgt_lang=eng
 
 help_message=$(
     cat <<EOF
@@ -49,41 +51,47 @@ if [ $# -ne 0 ]; then
     exit 2
 fi
 
-testset="test"
+declare -A cts_testset_dict
+
+cts_testset_dict+=(
+    ["bem"]="bigc.test"
+    ["mlt"]="main.dev"
+    ["bho"]="panlingua.dev"
+    ["mar"]="panlingua.test"
+    ["tmh"]="taq.dev"
+    ["cmn"]="test"
+)
+
+stm_dir=${data_base_dir}
+testset=${cts_testset_dict[${src_lang}]}
 
 _prefix=
 if [ "${framework}" == "huggingface" ]; then
     _prefix+="hf_"
 fi
 
-opts=
-if "${stereo}"; then
-    opts+="--stereo "
-fi
-
 # Hard coded as ASR eval doesn't use this
 test_score_dir=${score_dir}
 mkdir -p ${test_score_dir}/data
 
-# Convert the reference file to STM format
-pyscripts/utils/csv2stm.py \
-    -i ${data_base_dir}/splits/${dset}.csv \
-    -o "${test_score_dir}/data/ref.stm"\
-    -d ${data_base_dir} \
-    --task mt ${opts}
+if "${merge_utt}"; then
+    _opts="--merge-utt"
+else
+    _opts=""
+fi
 
 # Convert the hypothesis file to STM format
 pyscripts/utils/text2stm.py \
     -i "${hyp_mt}" \
     -o "${test_score_dir}/data/_hyp.stm" \
-    -r "${test_score_dir}/data/ref.stm" \
-    --dset ${dset}
+    -r "$stm_dir/st.${src_lang}-${tgt_lang}.${dset}.stm" \
+    --dset ${dset} ${_opts}
 
 # Invoke the updated evaluation script
 ./run_scale23_evals.sh \
     --score_dir "${test_score_dir}" \
     --src_lang "${src_lang}" \
     --hyp_mt "${test_score_dir}/data/_hyp.stm" \
-    --ref_mt "${test_score_dir}/data/ref.stm" \
+    --ref_mt "$stm_dir/st.${src_lang}-${tgt_lang}.${dset}.stm" \
     --arabic "${arabic}" \
     --python "${python}"
