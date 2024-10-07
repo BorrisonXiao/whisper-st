@@ -12,9 +12,9 @@ Seq2SeqTrainingArguments:
   logging_steps: 5
   report_to: ["tensorboard"]
   evaluation_strategy: "steps"
-  eval_steps: 10
+  eval_steps: 20
   save_strategy: "steps"
-  save_steps: 10
+  save_steps: 20
   save_total_limit: 3
   load_best_model_at_end: False
   gradient_checkpointing: True
@@ -29,11 +29,6 @@ LoraConfig:
   lora_alpha: 64
   lora_dropout: 0.1
   target_modules: ".*(encoder|decoder).*(self_attn|encoder_attn).*(q_proj|k_proj|v_proj|out_proj)|(.*(fc1|fc2).*)$"
-
-WhisperConfig:
-  apply_spec_augment: True
-  mask_feature_prob: 0.1
-  mask_time_prob: 0.05
 
 QuantizationConfig:
   load_in_4bit: True

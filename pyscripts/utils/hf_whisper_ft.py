@@ -3,7 +3,7 @@
 # Copyright 2023 Johns Hopkins University (Cihan Xiao)
 # -*- coding: utf-8 -*-
 
-from transformers import WhisperProcessor, WhisperForConditionalGeneration, Seq2SeqTrainingArguments, WhisperTrainer, BitsAndBytesConfig
+from transformers import Seq2SeqTrainingArguments, WhisperTrainer, BitsAndBytesConfig
 import argparse
 from pathlib import Path
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
@@ -24,6 +24,8 @@ from transformers.trainer_callback import (
     TrainerCallback,
 )
 from transformers.trainer_whisper import _schedule_dynamic_mtl_weight
+from transformers.models.whisper_st.processing_whisper import WhisperProcessor
+from transformers.models.whisper_st.modeling_whisper import WhisperForConditionalGeneration
 
 
 LANGS = {
@@ -43,7 +45,19 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
     train_dset_dict = {}
     val_dset_dict = {}
     for lang in src_langs:
-        if mode == "mtl":
+        if mode == "mt":
+            # For MT-only learning only the translation is needed and only the
+            # text is kept
+            train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
+            val_dset = load_from_disk(hf_datadir / f"{lang}.{dev_name}")
+            train_dset = train_dset.remove_columns([col for col in train_dset.column_names if col not in [
+                "transcript", "translation", "src_lang", "tgt_lang"]])
+            # Note that the "transcript" column is kept in case we want to evaluate on ASR at training time
+            val_dset = val_dset.remove_columns([col for col in val_dset.column_names if col not in [
+                "transcript", "translation", "src_lang", "tgt_lang"]])
+            train_dset_dict[f"{lang}_{mode}"] = train_dset
+            val_dset_dict[f"{lang}_{mode}"] = val_dset
+        elif mode == "mtl":
             # For multi-task learning, the dataset will be duplicated and concatenated
             # with the other task's dataset. Note that all both the transcript and
             # translation will be named as "text" in the returned dataset.
@@ -165,9 +179,9 @@ def prepare_dataset(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
 
             processor = WhisperProcessor.from_pretrained(
-                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode == "st" else "transcribe") if not _processor else _processor
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode in ["st", "mt"] else "transcribe") if not _processor else _processor
 
-            if mode == "pmtl":
+            if mode in ["pmtl", "mt"]:
                 if normalize_text:
                     std_basic = BasicTextNormalizer()
                     std_eng = EnglishTextNormalizer({})
@@ -175,12 +189,16 @@ def prepare_dataset(
                     f"openai/whisper-{model_name}", language=LANGS[lang], task="translate")
 
             def _prepare_dataset(batch):
-                audio = batch["audio"]
-                if not on_the_fly_feat_extraction:
-                    batch["input_features"] = processor.feature_extractor(
-                        audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+                audio = batch["audio"] if "audio" in batch else None
+                
+                # The audio will be a learnable audio feature mask embedding
+                if mode != "mt":
+                    if not on_the_fly_feat_extraction:
+                        batch["input_features"] = processor.feature_extractor(
+                            audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+                    
 
-                if mode == "pmtl":
+                if mode in ["pmtl", "mt"]:
                     scp = std_basic(batch["transcript"]).strip(
                     ) if normalize_text else batch["transcript"]
                     # if "train" in dset_type:
@@ -223,7 +241,7 @@ def prepare_dataset(
                 """Filter label sequences longer than max length (448)"""
                 return labels_length < max_label_length
 
-            if mode == "pmtl":
+            if mode in ["pmtl", "mt"]:
                 processed_dset = processed_dset.filter(filter_labels, input_columns=[
                                                        "labels_src_length"])
                 processed_dset = processed_dset.filter(filter_labels, input_columns=[
@@ -258,16 +276,24 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     dialects: dict = None
 
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        if "input_features" not in features[0]:
-            # Perform feature extraction on the fly
-            input_features = [{"input_features": self.processor.feature_extractor(
-                feature["audio"]["array"], sampling_rate=feature["audio"]["sampling_rate"]).input_features[0]} for feature in features]
-        else:
-            input_features = [{"input_features": feature["input_features"]}
-                              for feature in features]
+        input_features = [{"input_features": torch.zeros((self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
+        for i, feature in enumerate(features):
+            if "input_features" not in feature:
+                if "audio" in feature:
+                    # Perform feature extraction on the fly
+                    input_features[i] = {"input_features": self.processor.feature_extractor(
+                        feature["audio"]["array"], sampling_rate=feature["audio"]["sampling_rate"]).input_features[0]}
+            else:
+                input_features[i] = {"input_features": feature["input_features"]}
+        
         # Convert to tensors
-        batch = self.processor.feature_extractor.pad(
-            input_features, return_tensors="pt")
+        # input_features[0] = {"input_features": self.processor.feature_extractor(torch.Tensor()).input_features[0]}
+        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
+        # if input_features[0]["input_features"] is not None:
+        #     batch = self.processor.feature_extractor.pad(
+        #         input_features, return_tensors="pt")
+        # else:
+        #     batch = {"input_features": torch.zeros(len(input_features), 1, 1)}
 
         asr_ref_prompt = False
         if "labels_src" in features[0]:
@@ -331,6 +357,8 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
             batch["labels"] = labels
 
+        # For more information
+        batch["output_attentions"] = True
         return batch
 
 
@@ -418,28 +446,30 @@ def feat_extraction(
     # Step 2: Feature extraction
     # TODO (Cihan): Add support for subset multilingual training
     multilingual = True if src_lang == "all" else False
-    _train_dset = prepare_dataset(dset_dict=train_dset_dict,
-                                  model_name=model_name,
-                                  preprocessing_num_proc=preprocessing_num_proc,
-                                  normalize_text=normalize_text,
-                                  save_feature_dir=save_feature_dir,
-                                  dset_type=train_set,
-                                  local_rank=local_rank,
-                                  on_the_fly_feat_extraction=on_the_fly_feat_extraction,
-                                  train=train,
-                                  multilingual=multilingual,
-                                  )
-    _val_dset = prepare_dataset(dset_dict=val_dset_dict,
-                                model_name=model_name,
-                                preprocessing_num_proc=preprocessing_num_proc,
-                                normalize_text=normalize_text,
-                                save_feature_dir=save_feature_dir,
-                                dset_type=dev_name,
-                                local_rank=local_rank,
-                                on_the_fly_feat_extraction=on_the_fly_feat_extraction,
-                                train=train,
-                                multilingual=multilingual,
-                                )
+    _val_dset = prepare_dataset(
+        dset_dict=val_dset_dict,
+        model_name=model_name,
+        preprocessing_num_proc=preprocessing_num_proc,
+        normalize_text=normalize_text,
+        save_feature_dir=save_feature_dir,
+        dset_type=dev_name,
+        local_rank=local_rank,
+        on_the_fly_feat_extraction=on_the_fly_feat_extraction,
+        train=train,
+        multilingual=multilingual,
+    )
+    _train_dset = prepare_dataset(
+        dset_dict=train_dset_dict,
+        model_name=model_name,
+        preprocessing_num_proc=preprocessing_num_proc,
+        normalize_text=normalize_text,
+        save_feature_dir=save_feature_dir,
+        dset_type=train_set,
+        local_rank=local_rank,
+        on_the_fly_feat_extraction=on_the_fly_feat_extraction,
+        train=train,
+        multilingual=multilingual,
+    )
 
     return _train_dset, _val_dset
 
@@ -766,7 +796,7 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl", "pmtl"],
+                        choices=["asr", "st", "mtl", "pmtl", "mt"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")

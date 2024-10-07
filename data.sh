@@ -321,6 +321,11 @@ if ! "${skip_data_prep}"; then
             for _path in "${_logdir}/tmp"/*; do
                 dset=${_path##*/}
 
+                # Skip if the dset is not in training nor validation/test set
+                if [[ ${train_set} != *"${dset}"* ]] && [[ ${valid_set} != *"${dset}"* ]] && [[ ${test_sets} != *"${dset}"* ]]; then
+                    continue
+                fi
+
                 # If the merged stm file exists already, don't do it again
                 log "Merging utterances for ${dset}"
                 # ${python} pyscripts/utils/generate_merged_utts.py \
