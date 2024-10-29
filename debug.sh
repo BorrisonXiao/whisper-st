@@ -11,8 +11,8 @@ set -o pipefail
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
-src_lang=cmn
-# src_lang=spa
+# src_lang=cmn
+src_lang=spa
 # src_lang=rus
 # src_lang=all
 tgt_lang=eng
@@ -26,8 +26,8 @@ train_set=train-cts
 train_dev=dev1
 extra_dev=dev2
 
+debug=false
 debug=true
-# debug=false
 
 ds_config=conf/tuning/ds2.json # The deepspeed configuration file
 merge_utt=true                 # Whether to merge utterances for training. This is particularly important for finetuning.
@@ -37,18 +37,18 @@ prompted_mtl=true              # Whether to use the prompted multi-task learning
 normalize_text=false           # Whether or not to normalize the text at training time
 master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
-use_gpu_inference=true        # Whether to use GPU for inference
-# inference_nj=80                 # Number of jobs for decoding, note that each job will use a GPU
+use_gpu_inference=true         # Whether to use GPU for inference
 merge_decode=false             # Whether to merge the utterances at decoding time
 skip_data_prep=true            # Whether to skip data preparation
 skip_training=false            # Whether to skip training
-use_asr_prompt=true            # Whether to mask the ASR hypothesis at BMTL training time
-min_promptless_prob=0.2        # The minimum probability for performing promptless ST finetuning
-max_promptless_prob=0.2        # The maximum probability for perforFming promptless ST finetuning
-min_sample_prob=0.1            # The minimum probability for sampling the PMTL ASR hypothesis
-max_sample_prob=0.4            # The maximum probability for sampling the PMTL ASR hypothesis (0.0 means disable sampling)
-min_alpha=0.4                  # The minimum alpha for the multi-task losses, i.e. the weight for the ST loss
-max_alpha=0.5                  # The maximum alpha for the multi-task losses, i.e. the weight for the ST loss (0.0 means disable ST loss)
+use_asr_prompt=true            # Whether to prepend the ASR hypothesis/reference to the ST hypothesis at training
+use_asr_prompt_dev=false       # Whether to prepend the ASR hypothesis/reference to the ST hypothesis at validation
+min_promptless_prob=0          # The minimum probability for performing promptless ST finetuning
+max_promptless_prob=0          # The maximum probability for performing promptless ST finetuning
+min_sample_prob=0              # The minimum probability for sampling the PMTL ASR hypothesis
+max_sample_prob=0              # The maximum probability for sampling the PMTL ASR hypothesis (0.0 means disable sampling)
+min_alpha=1.0                  # The minimum alpha for the multi-task losses, i.e. the weight for the ST loss
+max_alpha=1.0                  # The maximum alpha for the multi-task losses, i.e. the weight for the ST loss (0.0 means disable ST loss)
 dynamic_loss_start_step=1      # The step to start the dynamic loss weight
 dynamic_loss_k=0.25            # The k for the dynamic loss weight (the log base)
 use_asr_prompt_decode=false    # Whether to mask the ASR hypothesis at inference time
@@ -58,7 +58,7 @@ load_model_from_path=          # The path to load the model from
 resume_from_checkpoint=        # The path to resume from a checkpoint
 
 # Modify this to your python path, this is due to some ESPNet environment issues
-python_hf=/home/hltcoe/cxiao/research/espnet-st/tools/miniconda/envs/hf/bin/python3
+python_hf=python3
 # The database for storing merged data
 merged_data_base=/exp/cxiao/scale23/gaussian_data_base
 
@@ -69,25 +69,21 @@ if "${debug}"; then
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
-    # load_model_from_path=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/mtl/lora/merged_model
 else
     model=large-v2 # base, large, large-v2 etc.
-    st_config=conf/tuning/st_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+    st_config=conf/tuning/mt_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     if "${prompted_mtl}"; then
-        mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+        mtl_config=conf/tuning/mt_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     else
-        mtl_config=conf/tuning/mtl_${model}_${src_lang}_${peft_method}_${train_set}.yaml
+        mtl_config=conf/tuning/mt_${model}_${src_lang}_${peft_method}_${train_set}.yaml
     fi
     if [ -n "${ds_config}" ]; then
         opts+=" --ds_config ${ds_config} "
     fi
-    # resume_from_checkpoint=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/pmtl/lora_0.2_0.8/checkpoint-800
-    # resume_from_checkpoint="/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/pmtl/lora_0.1_0.3/checkpoint-9600"
-    # load_model_from_path=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/ara/train-cts_sp/mtl/lora/merged_model
 fi
 
 if [ ${model} == "large-v2" ]; then
-    inference_batch_size=24
+    inference_batch_size=1
 elif [ ${model} == "medium" ]; then
     inference_batch_size=48
 elif [ ${model} == "tiny" ]; then
@@ -125,6 +121,7 @@ if [ -n "${st_save_eval_preds}" ]; then
     opts+=" --st_save_eval_preds ${st_save_eval_preds} "
 fi
 opts+=" --use_asr_prompt ${use_asr_prompt}"
+opts+=" --use_asr_prompt_dev ${use_asr_prompt_dev}"
 opts+=" --min_promptless_prob ${min_promptless_prob} "
 opts+=" --max_promptless_prob ${max_promptless_prob} "
 opts+=" --min_sample_prob ${min_sample_prob} "
@@ -135,14 +132,6 @@ opts+=" --dynamic_loss_start_step ${dynamic_loss_start_step} "
 opts+=" --dynamic_loss_k ${dynamic_loss_k} "
 
 declare -A testset_dict
-
-# testset_dict+=(
-#     ["ara"]="iwslt22_test fleurs_test"
-#     ["cmn"]="bbn_cts_bolt_test fleurs_test"
-#     ["kor"]="uhura_test fleurs_test"
-#     ["rus"]="uhura_test fleurs_test"
-#     ["spa"]="fisher_test callhome_test fleurs_test"
-#     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test fleurs_test")
 
 testset_dict+=(
     ["ara"]="iwslt22_test"
@@ -218,7 +207,6 @@ if ! "${skip_data_prep}"; then
         --src_case ${src_case} \
         --tgt_case ${tgt_case} \
         --feats_type raw \
-        --speed_perturb_factors "0.9 1.0 1.1" \
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
@@ -237,7 +225,7 @@ if ! "${skip_data_prep}"; then
 fi
 
 if ! "${skip_training}"; then
-    ./prompted_ft.sh \
+    ./mt_ft.sh \
         --ngpu 8 \
         --expdir ft_exp \
         --local_data_opts "$local_data_opts" \
@@ -247,12 +235,11 @@ if ! "${skip_training}"; then
         --src_lang ${src_lang} \
         --tgt_lang ${tgt_lang} \
         --feats_type raw \
-        --speed_perturb_factors "0.9 1.0 1.1" \
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 2 \
-        --stop_stage 2 \
+        --stage 6 \
+        --stop_stage 6 \
         --dumpdir "${dumpdir}" \
         --st_tag whisper_${model} \
         --model_name ${model} \
@@ -269,9 +256,10 @@ if ! "${skip_training}"; then
         --normalize_text ${normalize_text} \
         --master_port ${master_port} \
         --python_hf ${python_hf} \
-        --inference_batch_size ${inference_batch_size} \
         --use_asr_prompt_decode ${use_asr_prompt_decode} \
         --promptless_decode ${promptless_decode} \
         --disable_asr_inference ${disable_asr_inference} \
+        --inference_batch_size ${inference_batch_size} \
+        --num_beams 1 \
         --merge_decode ${merge_decode} ${opts}
 fi

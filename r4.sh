@@ -225,7 +225,7 @@ if ! "${skip_data_prep}"; then
 fi
 
 if ! "${skip_training}"; then
-    ./mt_ft.sh \
+    ./umt_ft.sh \
         --ngpu 8 \
         --expdir ft_exp \
         --local_data_opts "$local_data_opts" \
@@ -238,8 +238,8 @@ if ! "${skip_training}"; then
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 11 \
-        --stop_stage 11 \
+        --stage 12 \
+        --stop_stage 13 \
         --dumpdir "${dumpdir}" \
         --st_tag whisper_${model} \
         --model_name ${model} \

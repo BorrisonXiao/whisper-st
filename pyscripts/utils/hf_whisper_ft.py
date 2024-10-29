@@ -45,7 +45,7 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
     train_dset_dict = {}
     val_dset_dict = {}
     for lang in src_langs:
-        if mode == "mt":
+        if mode == "mt" or mode == "umt":
             # For MT-only learning only the translation is needed and only the
             # text is kept
             train_dset = load_from_disk(hf_datadir / f"{lang}.{train_set}")
@@ -179,9 +179,9 @@ def prepare_dataset(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
 
             processor = WhisperProcessor.from_pretrained(
-                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode in ["st", "mt"] else "transcribe") if not _processor else _processor
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode in ["st", "mt", "umt"] else "transcribe") if not _processor else _processor
 
-            if mode in ["pmtl", "mt"]:
+            if mode in ["pmtl", "mt", "umt"]:
                 if normalize_text:
                     std_basic = BasicTextNormalizer()
                     std_eng = EnglishTextNormalizer({})
@@ -192,13 +192,13 @@ def prepare_dataset(
                 audio = batch["audio"] if "audio" in batch else None
                 
                 # The audio will be a learnable audio feature mask embedding
-                if mode != "mt":
+                if mode not in ["mt", "umt"]:
                     if not on_the_fly_feat_extraction:
                         batch["input_features"] = processor.feature_extractor(
                             audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
                     
 
-                if mode in ["pmtl", "mt"]:
+                if mode in ["pmtl", "mt", "umt"]:
                     scp = std_basic(batch["transcript"]).strip(
                     ) if normalize_text else batch["transcript"]
                     # if "train" in dset_type:
@@ -241,7 +241,7 @@ def prepare_dataset(
                 """Filter label sequences longer than max length (448)"""
                 return labels_length < max_label_length
 
-            if mode in ["pmtl", "mt"]:
+            if mode in ["pmtl", "mt", "umt"]:
                 processed_dset = processed_dset.filter(filter_labels, input_columns=[
                                                        "labels_src_length"])
                 processed_dset = processed_dset.filter(filter_labels, input_columns=[
@@ -261,8 +261,11 @@ def prepare_dataset(
             processed_dset_dict[_lang] = processed_dset
 
     # Concatenate all the datasets if training and not multilingual
-    if "train" in dset_type or not multilingual:
+    if "train" in dset_type:
         return concatenate_datasets(processed_dset_list) if len(processed_dset_list) > 0 else None
+    # BUG: For some reason the eval_loop expects the dataset to be a dictionary
+    # elif not multilingual:
+    #     return {concatenate_datasets(processed_dset_list)} if len(processed_dset_list) > 0 else None
     return processed_dset_dict if len(processed_dset_list) > 0 else None
 
 
@@ -276,6 +279,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
     dialects: dict = None
 
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        # Default setting all features to zeros for MT training
         input_features = [{"input_features": torch.zeros((self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
         for i, feature in enumerate(features):
             if "input_features" not in feature:
@@ -496,6 +500,7 @@ def finetune(
     save_eval_preds=None,
     dialect=None,
     use_asr_prompt=False,
+    use_asr_prompt_dev=False,
     min_promptless_prob=0.0,
     max_promptless_prob=0.0,
     max_sample_prob=0.0,
@@ -549,9 +554,18 @@ def finetune(
     def compute_metrics(pred, normalize_eval=False):
         pred_ids = pred.predictions
         label_ids = pred.label_ids
+        
+        # compute loss only on tokens after the first <|startoftranscript|> token
+        sot_token_id = processor.tokenizer.convert_tokens_to_ids(
+            "<|startoftranscript|>")
+        # that is, all tokens before the first <|startoftranscript|> token are replaced with -100
+        for i in range(len(label_ids)):
+            label_ids[i, :label_ids[i].tolist().index(sot_token_id)] = -100
+            pred_ids[i, :pred_ids[i].tolist().index(sot_token_id)] = -100
 
         # replace -100 with the pad_token_id
         label_ids[label_ids == -100] = processor.tokenizer.pad_token_id
+        pred_ids[pred_ids == -100] = processor.tokenizer.pad_token_id
 
         # we do not want to group tokens when computing the metrics
         pred_str = processor.tokenizer.batch_decode(
@@ -603,8 +617,8 @@ def finetune(
             cer = metric_cer.compute(
                 predictions=pred_str, references=label_str)
             return {"cer": cer}
-        else:
-            # Use sacrebleu for ST training
+        else:                
+            # Use sacrebleu for translation training
             sacrebleu = metric_sacrebleu.compute(
                 predictions=pred_str, references=label_str)
             return {"sacrebleu": sacrebleu['score']}
@@ -750,6 +764,7 @@ def finetune(
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         use_asr_prompt=use_asr_prompt,
+        use_asr_prompt_dev=use_asr_prompt_dev,
         src_lang=LANGS[src_lang],
         eval_steps=10,
         min_promptless_prob=min_promptless_prob,
@@ -760,6 +775,7 @@ def finetune(
         max_alpha=max_alpha,
         loss_warmup=loss_warmup,
         loss_base=loss_base,
+        mask_labels_src=mode != "umt",
     )
     trainer.add_callback(PrinterCallback(trainer))
 
@@ -796,7 +812,7 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl", "pmtl", "mt"],
+                        choices=["asr", "st", "mtl", "pmtl", "mt", "umt"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")
@@ -830,6 +846,8 @@ def main():
                         help="The dialect language code will be used instead of the src_lang code for training if specified.")
     parser.add_argument("--use-asr-prompt", action="store_true",
                         help="Whether to use the ASR hyp/ref as the prompt for the ST task.")
+    parser.add_argument("--use-asr-prompt-dev", action="store_true",
+                        help="Whether to use the ASR hyp as the prompt for the ST/MT task during validation.")
     parser.add_argument("--min-promptless-prob", type=float, default=0.0,
                         help="The minimum probability for performing promptless ST finetuning.")
     parser.add_argument("--max-promptless-prob", type=float, default=0.0,
@@ -894,6 +912,7 @@ def main():
             save_eval_preds=args.save_eval_preds,
             dialect=args.dialect,
             use_asr_prompt=args.use_asr_prompt,
+            use_asr_prompt_dev=args.use_asr_prompt_dev,
             min_promptless_prob=args.min_promptless_prob,
             max_promptless_prob=args.max_promptless_prob,
             max_sample_prob=args.max_sample_prob,

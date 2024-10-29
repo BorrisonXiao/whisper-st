@@ -77,7 +77,7 @@ promptless_decode=false                   # Whether to perform promptless ST inf
 disable_asr_inference=false               # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
 use_gpu_inference=true                    # Whether to use GPU for inference
 num_beams=2                               # Number of beams for decoding
-inference_checkpoint=checkpoint-9600      # Checkpoint to use for inference
+inference_checkpoint=                     # Checkpoint to use for inference
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -217,12 +217,12 @@ if [ -n "${speed_perturb_factors}" ] && ! echo "${train_set}" | grep -q "_sp"; t
 fi
 
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-    log "Stage 1: Run prompted multitask finetuning on the training data"
-    _dir="${mt_exp}/${src_lang}/${train_set}/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+    log "Stage 1: Run unmasked MT finetuning on the training data"
+    _dir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
     _logdir="${_dir}/logdir"
     mkdir -p "${_logdir}"
 
-    opts=" --mode mt "
+    opts=" --mode umt "
     if [ "${framework}" == "huggingface" ]; then
         opts+=" --hf_datadir ${hf_datadir} "
         if "${debug}"; then
@@ -291,9 +291,9 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
             exit 2
         else
             # If the feature is already extracted in previous runs, skip this step
-            if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.mt" ] ||
-                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.mt" ]; then
-                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.mt or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.mt does not exist..."
+            if [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.umt" ] ||
+                [ ! -d "${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.umt" ]; then
+                log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.umt or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.umt does not exist..."
                 if "${debug}"; then
                     ${python_hf} ${train_tool} \
                         --feat-extraction \
@@ -305,7 +305,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                 else
                     # Submit the feature extraction jobs
                     JOBID=$(date +'%Y%m%d%H%M%S')
-                    log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.mt or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.mt does not exist..."
+                    log "${hf_datadir}/features/${_feat_type}/${src_lang}.${train_set}.umt or ${hf_datadir}/features/${_feat_type}/${src_lang}.${extra_valid_set}.umt does not exist..."
                     log "Feature extraction started... log: '${_logdir}/fe_${JOBID}.log'"
                     ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 64G --gpu 1 "${_logdir}"/fe_${JOBID}.log \
                         ${python_hf} ${train_tool} \
@@ -379,7 +379,7 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         else
             _suf=""
         fi
-        _logdir="${mt_exp}/logdir/inference_mt/st/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        _logdir="${mt_exp}/logdir/inference_umt/st/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -408,12 +408,12 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
             fi
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
-        _modeldir="${mt_exp}/${src_lang}/${train_set}/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _modeldir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
 
         if [ -n "${inference_checkpoint}" ]; then
             _modeldir="${_modeldir}/${inference_checkpoint}"
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
 
         if [ "${dset}" = "${train_set}" ]; then
@@ -518,9 +518,9 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
         if [ -n "${inference_checkpoint}" ]; then
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/st/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
         if "${promptless_decode}"; then
             _dir="${_dir}_promptless"
@@ -540,7 +540,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
             opts+=" --data_base_dir ${merged_data_base} "
         fi
 
-        score_dir=scores_ft/mt/st/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
+        score_dir=scores_ft/umt/st/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
         if "${promptless_decode}"; then
             score_dir="${score_dir}_promptless"
         elif "${use_asr_prompt_decode}"; then
@@ -584,7 +584,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         else
             _suf=""
         fi
-        _logdir="${mt_exp}/logdir/inference_mt/mmt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        _logdir="${mt_exp}/logdir/inference_umt/mmt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -613,12 +613,12 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             fi
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
-        _modeldir="${mt_exp}/${src_lang}/${train_set}/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _modeldir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
 
         if [ -n "${inference_checkpoint}" ]; then
             _modeldir="${_modeldir}/${inference_checkpoint}"
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
 
         if [ "${dset}" = "${train_set}" ]; then
@@ -728,9 +728,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
         if [ -n "${inference_checkpoint}" ]; then
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
         if "${promptless_decode}"; then
             _dir="${_dir}_promptless"
@@ -750,7 +750,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             opts+=" --data_base_dir ${merged_data_base} "
         fi
 
-        score_dir=scores_ft/mt/mmt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
+        score_dir=scores_ft/umt/mmt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
         if "${promptless_decode}"; then
             score_dir="${score_dir}_promptless"
         elif "${use_asr_prompt_decode}"; then
@@ -794,7 +794,7 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         else
             _suf=""
         fi
-        _logdir="${mt_exp}/logdir/inference_mt/mt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        _logdir="${mt_exp}/logdir/inference_umt/mt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -823,12 +823,12 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
             fi
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
-        _modeldir="${mt_exp}/${src_lang}/${train_set}/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _modeldir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
 
         if [ -n "${inference_checkpoint}" ]; then
             _modeldir="${_modeldir}/${inference_checkpoint}"
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
 
         if [ "${dset}" = "${train_set}" ]; then
@@ -939,9 +939,9 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
         if [ -n "${inference_checkpoint}" ]; then
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
         if "${promptless_decode}"; then
             _dir="${_dir}_promptless"
@@ -961,7 +961,7 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
             opts+=" --data_base_dir ${merged_data_base} "
         fi
 
-        score_dir=scores_ft/mt/mt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
+        score_dir=scores_ft/umt/mt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
         if "${promptless_decode}"; then
             score_dir="${score_dir}_promptless"
         elif "${use_asr_prompt_decode}"; then
@@ -1001,7 +1001,7 @@ if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
         else
             _suf=""
         fi
-        _logdir="${mt_exp}/logdir/inference_mt/asr/${src_lang}/vanilla/${dset}/${decode_suf}"
+        _logdir="${mt_exp}/logdir/inference_umt/asr/${src_lang}/vanilla/${dset}/${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -1181,7 +1181,7 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
         else
             _suf=""
         fi
-        _logdir="${mt_exp}/logdir/inference_mt/cmt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        _logdir="${mt_exp}/logdir/inference_umt/cmt/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
         mkdir -p "${_logdir}"
         if "${merge_decode}"; then
             # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
@@ -1210,12 +1210,12 @@ if [ ${stage} -le 10 ] && [ ${stop_stage} -ge 10 ]; then
             fi
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
-        _modeldir="${mt_exp}/${src_lang}/${train_set}/mt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _modeldir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
 
         if [ -n "${inference_checkpoint}" ]; then
             _modeldir="${_modeldir}/${inference_checkpoint}"
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
 
         if [ "${dset}" = "${train_set}" ]; then
@@ -1331,9 +1331,9 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
             eval_script=run-testset-eval.sh
         fi
 
-        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
         if [ -n "${inference_checkpoint}" ]; then
-            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/mt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/cmt/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
         fi
         if "${promptless_decode}"; then
             _dir="${_dir}_promptless"
@@ -1353,7 +1353,7 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
             opts+=" --data_base_dir ${merged_data_base} "
         fi
 
-        score_dir=scores_ft/mt/cmt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
+        score_dir=scores_ft/umt/cmt/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
         if "${promptless_decode}"; then
             score_dir="${score_dir}_promptless"
         elif "${use_asr_prompt_decode}"; then
@@ -1367,6 +1367,199 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
             --model_tag ${model_name} \
             --dset "${_dset}" \
             --score_dir "${score_dir}" \
+            --framework "${framework}" ${opts}
+        cd -
+    done
+fi
+
+if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
+    log "Stage 12: Run (distributed) ASR inference on the dev/test data."
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
+    _lang="${src_lang}"
+    if [ -n "${dialect}" ]; then
+        _lang="${dialect}"
+    fi
+    # for dset in ${train_set} ${valid_set} ${test_sets}; do
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
+        # for dset in ${train_set}; do
+        # for dset in ${valid_set} ${extra_valid_set}; do
+        for dset in ${test_sets}; do
+        if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
+            _suf="/org"
+        elif [ "${dset}" = "${train_set}" ]; then
+            _suf="/org"
+            dset="${train_set}"
+        else
+            _suf=""
+        fi
+        _logdir="${mt_exp}/logdir/inference_umt/asr/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+        mkdir -p "${_logdir}"
+        if "${merge_decode}"; then
+            # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
+            if [[ ${dset} == *"_test" ]]; then
+                _suf="/testsets"
+            else
+                _suf=""
+            fi
+
+            _srcdir=${merged_data_base}/${src_lang}${_suf}
+            _dsetdir=${_logdir}/tmp
+            mkdir -p "${_dsetdir}"
+            pyscripts/utils/generate_wav_raw.py \
+                -i "${_srcdir}/sr.${src_lang}-${src_lang}.${dset}.stm" \
+                -o "${_dsetdir}"
+        else
+            _dsetdir=${data_feats}${_suf}/${dset}
+            # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
+            if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
+                mkdir -p "${_dsetdir}"
+                _orgdir=${data_feats}${_suf}/dev
+                pyscripts/utils/filter_dev.py \
+                    -i "${_orgdir}/wav_raw.scp" \
+                    -o "${_dsetdir}/wav_raw.scp" \
+                    -r /exp/scale23/data/3-way/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm
+            fi
+        fi
+
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/asr/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        _modeldir="${mt_exp}/${src_lang}/${train_set}/umt/${peft_method}_${min_sample_prob}_${max_sample_prob}"
+
+        if [ -n "${inference_checkpoint}" ]; then
+            _modeldir="${_modeldir}/${inference_checkpoint}"
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/asr/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+        fi
+
+        if [ "${dset}" = "${train_set}" ]; then
+            ${python} pyscripts/utils/filter_sp.py \
+                -i "${_dsetdir}/wav_raw.scp" \
+                -o "${_dsetdir}/wav_raw_nosp.scp"
+
+            key_file=${_dsetdir}/wav_raw_nosp.scp
+        else
+            key_file=${_dsetdir}/wav_raw.scp
+        fi
+        # 1. Split the key file
+        _nj=$(min "${inference_nj}" "$(wc <${key_file} -l)")
+
+        split_scps=""
+        for n in $(seq "${_nj}"); do
+            split_scps+=" ${_logdir}/decode.${n}.scp"
+        done
+        # shellcheck disable=SC2086
+        utils/split_scp.pl "${key_file}" ${split_scps}
+
+        # 2. Submit jobs
+        log "Inference started... log: '${_logdir}/decode.*.log'"
+
+        opts=
+        if [ "${framework}" == "huggingface" ]; then
+            if "${merge_decode}"; then
+                _hf_dset="${hf_datadir}/${src_lang}.${dset}"
+            else
+                _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
+            fi
+            opts+=" --dset ${_hf_dset} "
+
+            if [ "${peft_method}" != none ]; then
+                opts+=" --peft-model ${_modeldir} "
+            fi
+
+            inference_tool="pyscripts/utils/hf_whisper_inference.py"
+            opts+=" --num-beams ${num_beams} "
+        else
+            inference_tool="pyscripts/utils/whisper_inference.py"
+        fi
+
+        if "${debug}"; then
+            ${inference_tool} \
+                --keyfile ${_logdir}/decode.1.scp \
+                --src-lang ${_lang} \
+                --tgt-lang ${_lang} \
+                --output_dir ${_logdir}/output.1 \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        else
+            # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
+            #       but it's used only for deciding the sample ids.
+            # shellcheck disable=SC2046,SC2086
+            ${cuda_cmd} --hostname '!r5n0*\&!r10n04\&!r10n06' --mem 16G --gpu 1 JOB=1:"${_nj}" "${_logdir}"/decode.JOB.log \
+                ${inference_tool} \
+                --keyfile ${_logdir}/decode.JOB.scp \
+                --src-lang ${_lang} \
+                --tgt-lang ${_lang} \
+                --output_dir ${_logdir}/output.JOB \
+                --pretrained-model ${_modeldir} \
+                --batch-size ${inference_batch_size} \
+                --model_name ${model_name} ${opts}
+        fi
+
+        # 3. Concatenates the output files from each jobs
+        mkdir -p "${_dir}"
+        for i in $(seq "${_nj}"); do
+            cat "${_logdir}/output.${i}/text"
+        done | LC_ALL=C sort -k1 >"${_dir}/text"
+    done
+fi
+
+if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
+    log "Stage 13: Run evaluation on the ASR decoded data."
+
+    decode_suf="_org"
+    if "${merge_decode}"; then
+        decode_suf="_merged"
+    fi
+    train_suf="/org"
+    if "${merge_utt}"; then
+        train_suf="/merged"
+    fi
+    _lang="${src_lang}"
+    if [ -n "${dialect}" ]; then
+        _lang="${dialect}"
+    fi
+
+    # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+        # for dset in ${valid_set}; do
+        for dset in ${test_sets}; do
+        # for dset in ${extra_valid_set} ${test_sets}; do
+        log "Running evaluation on ${dset}"
+        eval_script=run-asr-eval.sh
+
+        _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/asr/${peft_method}_${min_sample_prob}_${max_sample_prob}${train_suf}${decode_suf}"
+        if [ -n "${inference_checkpoint}" ]; then
+            _dir="${mt_exp}/${src_lang}/decode/${train_set}/${dset}/umt/asr/${peft_method}_${min_sample_prob}_${max_sample_prob}_${inference_checkpoint}${train_suf}${decode_suf}"
+        fi
+        _asr_hyp="${PWD}/${_dir}/text"
+        _dset=$(echo "${dset}" | sed 's/_test$//')
+
+        opts=
+        if [ "${src_lang}" == "ara" ]; then
+            opts+=" --arabic true "
+        fi
+        opts+=" --cer ${eval_cer} "
+
+        if "${merge_decode}"; then
+            opts+=" --merge_utt true "
+            opts+=" --data_base_dir ${merged_data_base} "
+        fi
+
+        score_dir=scores_ft/umt/asr/hf_whisper_${model_name}/${src_lang}/${peft_method}_${min_sample_prob}_${max_sample_prob}/${train_set}${train_suf}${decode_suf}/${dset}
+
+        cd evaluation
+        ${eval_script} \
+            --src_lang ${src_lang} \
+            --hyp_asr "${_asr_hyp}" \
+            --sclite ${sclite_path} \
+            --dset "${_dset}" \
+            --score_dir ${score_dir} \
             --framework "${framework}" ${opts}
         cd -
     done

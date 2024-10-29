@@ -67,6 +67,8 @@ def inference(
         language=src_lang, task=task)
     print(f"model.device: {model.device}")
     print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
+    print(f"batch_size: {batch_size}")
+    print(f"num_beams: {num_beams}")
 
     # Load the HF dataset
     ds = load_from_disk(dset)
