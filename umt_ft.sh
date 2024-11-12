@@ -74,7 +74,6 @@ dynamic_loss_start_step=1000              # The step to start the dynamic loss w
 dynamic_loss_k=0.25                       # The k for the dynamic loss weight (the log base)
 use_asr_prompt_decode=false               # Whether to mask the ASR hypothesis at MT inference time
 promptless_decode=false                   # Whether to perform promptless ST inference
-disable_asr_inference=false               # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
 use_gpu_inference=true                    # Whether to use GPU for inference
 num_beams=2                               # Number of beams for decoding
 inference_checkpoint=                     # Checkpoint to use for inference
