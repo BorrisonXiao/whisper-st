@@ -26,8 +26,8 @@ train_set=train-cts
 train_dev=dev1
 extra_dev=dev2
 
-# debug=true
 debug=false
+debug=true
 
 ds_config=conf/tuning/ds2.json # The deepspeed configuration file
 merge_utt=true                 # Whether to merge utterances for training. This is particularly important for finetuning.
@@ -59,7 +59,7 @@ resume_from_checkpoint=        # The path to resume from a checkpoint
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=python3
 # The database for storing merged data
-merged_data_base=
+merged_data_base=/exp/cxiao/scale23/gaussian_data_base
 
 opts=
 data_opts=
@@ -157,7 +157,8 @@ fs=16k
 min_duration=0.0
 start_at_zero=true
 if "${merge_utt}"; then
-    hf_datadir=
+    org_hf_datadir=/exp/cxiao/scale23/hf_data
+    hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
     datadir=data/${src_lang}
     dumpdir=dump_gaussian/${src_lang}
     opts+=' --merged_data_base '
@@ -165,7 +166,7 @@ if "${merge_utt}"; then
     data_opts+=' --merged_data_base '
     data_opts+=$merged_data_base
 else
-    hf_datadir=
+    hf_datadir=/exp/cxiao/scale23/hf_data
     datadir=data/${src_lang}
     dumpdir=dump_gaussian/${src_lang}
 fi
@@ -205,7 +206,6 @@ if ! "${skip_data_prep}"; then
         --src_case ${src_case} \
         --tgt_case ${tgt_case} \
         --feats_type raw \
-        --speed_perturb_factors "0.9 1.0 1.1" \
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
@@ -215,18 +215,43 @@ if ! "${skip_data_prep}"; then
         --dumpdir "${dumpdir}" \
         --save_wav true \
         --framework ${framework} \
-        --hf_datadir ${hf_datadir} \
+        --hf_datadir ${org_hf_datadir} \
         --extra_valid_set "${extra_dev}" \
-        --merge_utt ${merge_utt} \
+        --merge_utt false \
         --remove_ark ${remove_ark} \
-        --gaussian_merge ${prompted_mtl} \
         --python_hf ${python_hf} ${data_opts}
+    # ./data.sh \
+    #     --local_data_opts "$local_data_opts" \
+    #     --audio_format "flac.ark" \
+    #     --nj 80 \
+    #     --fs ${fs} \
+    #     --src_lang ${src_lang} \
+    #     --tgt_lang ${tgt_lang} \
+    #     --src_case ${src_case} \
+    #     --tgt_case ${tgt_case} \
+    #     --feats_type raw \
+    #     --speed_perturb_factors "0.9 1.0 1.1" \
+    #     --train_set "${train_set}" \
+    #     --valid_set "${train_dev}" \
+    #     --test_sets "${test_set}" \
+    #     --stage 6 \
+    #     --stop_stage 6 \
+    #     --datadir ${datadir} \
+    #     --dumpdir "${dumpdir}" \
+    #     --save_wav true \
+    #     --framework ${framework} \
+    #     --hf_datadir ${hf_datadir} \
+    #     --extra_valid_set "${extra_dev}" \
+    #     --merge_utt ${merge_utt} \
+    #     --remove_ark ${remove_ark} \
+    #     --gaussian_merge ${prompted_mtl} \
+    #     --python_hf ${python_hf} ${data_opts}
 fi
 
 if ! "${skip_training}"; then
-    ./prompted_ft.sh \
+    ./prompted_ft2.sh \
         --ngpu 8 \
-        --expdir ft_exp \
+        --expdir ft2_exp \
         --local_data_opts "$local_data_opts" \
         --nj 80 \
         --st_config ${st_config} \
@@ -238,8 +263,8 @@ if ! "${skip_training}"; then
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 2 \
-        --stop_stage 3 \
+        --stage 1 \
+        --stop_stage 1 \
         --dumpdir "${dumpdir}" \
         --st_tag whisper_${model} \
         --model_name ${model} \
@@ -247,6 +272,7 @@ if ! "${skip_training}"; then
         --inference_nj ${inference_nj} \
         --framework ${framework} \
         --hf_datadir ${hf_datadir} \
+        --org_hf_datadir ${org_hf_datadir} \
         --peft_method ${peft_method} \
         --preprocessing_num_proc ${preprocessing_num_proc} \
         --on_the_fly_feat ${on_the_fly_feat} \

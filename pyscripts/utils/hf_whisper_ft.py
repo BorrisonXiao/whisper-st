@@ -79,7 +79,7 @@ def load_train_and_dev_sets(hf_datadir, train_set, src_lang, tgt_lang, mode="asr
             train_dset_dict[f"{lang}_asr"] = asr_train_dset
             train_dset_dict[f"{lang}_st"] = st_train_dset
             val_dset_dict[f"{lang}_st"] = st_val_dset
-        elif mode == "pmtl":
+        elif mode in ["pmtl", "mml"]:
             # For prompted multi-task learning, the dataset will not be duplicated
             # nor concatenated. Instead, the transcript and translation will be
             # kept in separate columns.
@@ -282,7 +282,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         # Default setting all features to zeros for MT training
         input_features = [{"input_features": torch.zeros((self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
         for i, feature in enumerate(features):
-            if "input_features" not in feature:
+            if "input_features" not in feature or feature["input_features"] is None:
                 if "audio" in feature:
                     # Perform feature extraction on the fly
                     input_features[i] = {"input_features": self.processor.feature_extractor(
@@ -290,6 +290,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
             else:
                 input_features[i] = {"input_features": feature["input_features"]}
         
+        breakpoint()
         # Convert to tensors
         # input_features[0] = {"input_features": self.processor.feature_extractor(torch.Tensor()).input_features[0]}
         batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
@@ -812,7 +813,7 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl", "pmtl", "mt", "umt"],
+                        choices=["asr", "st", "mtl", "pmtl", "mt", "umt", "mml"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")

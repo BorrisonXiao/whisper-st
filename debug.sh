@@ -8,6 +8,8 @@ set -e
 set -u
 set -o pipefail
 
+# This script is used to run the final mult-task, i.e. ST + ASR + MT + Prompted-ST, experiments
+
 # Change the following according to your experiments
 # src_lang=kor
 # src_lang=ara
