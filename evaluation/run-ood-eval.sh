@@ -96,6 +96,7 @@ pyscripts/utils/text2stm.py \
     --arabic "${arabic}" \
     --python "${python}"
 
+
 # # Convert STM files to text and utt2spk files
 # python pyscripts/utils/convert_stm.py $stm_dir/sr.${src_lang}-${src_lang}.${testset}.test.stm ${test_score_dir} text.tc.${src_lang}
 # python pyscripts/utils/convert_stm.py $stm_dir/st.${src_lang}-eng.${testset}.test.stm ${test_score_dir} text.tc.eng

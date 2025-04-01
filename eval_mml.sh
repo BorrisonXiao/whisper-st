@@ -26,31 +26,25 @@ min() {
 }
 SECONDS=0
 
-_modeldir=/home/hltcoe/cxiao/scale23/st/ft_exp/hf_whisper_large-v2_merged/spa/train-cts_sp/pmtl_ref/lora
-task=mt
+_modeldir=/home/hltcoe/cxiao/st/ft_dgx/hf_whisper_large-v2_merged/spa/train-cts_sp/mml/lora_0.8_0.2/checkpoint-7600
 src_langs="spa"
 logdir=/home/hltcoe/cxiao/scale23/st/logs
-outdir=/exp/cxiao/scale23/multi_st_decode
-inference_tool=pyscripts/utils/hf_whisper_inference.py
+outdir=/exp/cxiao/scale23/multi_st_decode/mml_ood
 inference_batch_size=16
 inference_nj=8
-merge_decode=false
 merge_utt=true
-valid_set=dev1
-extra_valid_set=dev2
-merged_data_base=/exp/cxiao/scale23/gaussian_data_base
 dumpdir=/exp/cxiao/scale23/dump_gaussian
 feats_type=raw
-hf_datadir=/exp/cxiao/scale23/_gaussian_hf_data
 org_hf_datadir=/exp/cxiao/scale23/hf_data
 python_hf=python3
 evaldir=evaluation
-scoredir=/home/hltcoe/cxiao/scale23/st/evaluation/scores/st/tmp/pmtl_spa_train-cts_sp_mt
-sclite_path=sclite
-debug=false
-eval_cer=false
+scoredir=/home/hltcoe/cxiao/scale23/st/evaluation/scores_tmp/mml_ood/st/hf_whisper_large-v2/spa/lora_0.8_0.2_checkpoint-7600/train-cts_sp/merged_org/fisher_test
+use_asr_prompt=true
+eval_multi_bleu=false
+no_glm=true
+debug=true
 num_beams=1
-stage=2
+stage=1
 stop_stage=2
 
 . utils/parse_options.sh
@@ -75,20 +69,7 @@ model_name=${model_name#hf_*_}
 inference_batch_size=$((inference_batch_size / num_beams))
 log "inference_batch_size: ${inference_batch_size}"
 
-mtl=false
-if [[ "${_modeldir}" == *"/mtl/"* ]]; then
-    mtl=true
-fi
-
-_mtlprefix=
-if "${mtl}"; then
-    _mtlprefix=mtl_
-fi
-
 decode_suf="_org"
-if "${merge_decode}"; then
-    decode_suf="_merged"
-fi
 train_suf="/org"
 if "${merge_utt}"; then
     train_suf="/merged"
@@ -124,45 +105,27 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
         test_sets=${testset_dict[${src_lang}]}
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         # for dset in ${valid_set} ${extra_valid_set}; do
-            for dset in ${test_sets}; do
+        for dset in ${test_sets}; do
             log "Running inference for ${src_lang} ${dset}"
-            _logdir="${logdir}/inference_${_mtlprefix}${task}/${train_lang}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
+            _logdir="${logdir}/inference_mml/st/${train_lang}/${src_lang}/${train_set}/${dset}/${peft_method}${train_suf}${decode_suf}"
             mkdir -p "${_logdir}"
 
-            if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
-                _suf="/org"
-            elif [ "${dset}" = "${train_set}" ]; then
+            if [ "${dset}" = "${train_set}" ]; then
                 _suf="/org"
                 dset="${train_set}"
             else
                 _suf=""
             fi
 
-            if "${merge_decode}"; then
-                # If dset is in test_sets, i.e. it contains the "_test" substring, add a suffix to the langdir
-                if [[ ${dset} == *"_test" ]]; then
-                    _suf="/testsets"
-                else
-                    _suf=""
-                fi
-
-                _srcdir=${merged_data_base}/${src_lang}${_suf}
-                _dsetdir=${_logdir}/tmp
+            _dsetdir=${data_feats}${_suf}/${dset}
+            # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
+            if [[ ! -d "${_dsetdir}" ]]; then
                 mkdir -p "${_dsetdir}"
-                pyscripts/utils/generate_wav_raw.py \
-                    -i "${_srcdir}/sr.${src_lang}-${src_lang}.${dset}.stm" \
-                    -o "${_dsetdir}"
-            else
-                _dsetdir=${data_feats}${_suf}/${dset}
-                # If the _dsetdir does not exist, run the filter_dev.py script to split the dev into valid_set and extra_valid_set
-                if [[ ! -d "${_dsetdir}" && ("${dset}" = "${valid_set}" || "${dset}" = "${extra_valid_set}") ]]; then
-                    mkdir -p "${_dsetdir}"
-                    _orgdir=${data_feats}${_suf}/dev
-                    pyscripts/utils/filter_dev.py \
-                        -i "${_orgdir}/wav_raw.scp" \
-                        -o "${_dsetdir}/wav_raw.scp" \
-                        -r /exp/scale23/data/3-way/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm
-                fi
+                _orgdir=${data_feats}${_suf}/dev
+                pyscripts/utils/filter_dev.py \
+                    -i "${_orgdir}/wav_raw.scp" \
+                    -o "${_dsetdir}/wav_raw.scp" \
+                    -r /exp/scale23/data/3-way/${src_lang}/sr.${src_lang}-${src_lang}.${dset}.stm
             fi
 
             if [ "${dset}" = "${train_set}" ]; then
@@ -186,27 +149,25 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
             utils/split_scp.pl "${key_file}" ${split_scps}
 
             log "Inference started... log: '${_logdir}/decode.*.log'"
-            _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/${_mtlprefix}${task}/${peft_method}${train_suf}${decode_suf}"
+            _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/st/${peft_method}${train_suf}${decode_suf}"
+            if "${use_asr_prompt}"; then
+                _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/st/${peft_method}${train_suf}${decode_suf}_asr_prompt"
+            fi
 
             opts=
-            if "${merge_decode}"; then
-                _hf_dset="${hf_datadir}/${src_lang}.${dset}"
-            else
-                _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
-            fi
+            _hf_dset="${org_hf_datadir}/${src_lang}.${dset}"
             opts+=" --dset ${_hf_dset} "
 
             if [ "${peft_method}" != none ]; then
                 opts+=" --peft-model ${_modeldir} "
             fi
 
-            if [ "${task}" == "st" ]; then
-                opts+=" --task translate "
-            fi
-
-            if [ "${task}" == "mt" ]; then
-                opts+=" --mt "
-                inference_tool="pyscripts/utils/hf_whisper_inference_pmtl.py"
+            inference_tool="pyscripts/utils/hf_whisper_inference_pmtl.py"
+            if "${use_asr_prompt}"; then
+                opts+=" --use-asr-hyp "
+                opts+=" --asr-hyp ${_dir}/asr "
+            else
+                opts+=" --disable-asr "
             fi
 
             if "${debug}"; then
@@ -217,6 +178,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
                     --output_dir ${_logdir}/output.1 \
                     --pretrained-model ${_modeldir} \
                     --batch-size ${inference_batch_size} \
+                    --num-beams ${num_beams} \
                     --model_name ${model_name} ${opts}
             else
                 # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
@@ -236,41 +198,67 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
 
             # 3. Concatenates the output files from each jobs
             mkdir -p "${_dir}"
-            if [ "${task}" == "mt" ]; then
+            for i in $(seq "${_nj}"); do
+                cat "${_logdir}/output.${i}/st"
+            done | LC_ALL=C sort -k1 >"${_dir}/st"
+            if "${use_asr_prompt}"; then
                 for i in $(seq "${_nj}"); do
-                    cat "${_logdir}/output.${i}/st"
-                done | LC_ALL=C sort -k1 >"${_dir}/text"
-            else
-                for i in $(seq "${_nj}"); do
-                    cat "${_logdir}/output.${i}/text"
-                done | LC_ALL=C sort -k1 >"${_dir}/text"
+                    cat "${_logdir}/output.${i}/asr"
+                done | LC_ALL=C sort -k1 >"${_dir}/asr"
             fi
         done
     done
 fi
 
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
-    log "Stage 2: Run evaluation on the ${task} decoded data."
+    log "Stage 2: Run evaluation on the decoded data."
 
     for src_lang in ${src_langs}; do
-        # If the language is kor, set eval_cer to true
-        if [ "${src_lang}" = "kor" ]; then
-            eval_cer=true
-        else
-            eval_cer=false
-        fi
+        test_sets=${testset_dict[${src_lang}]}
+        # Run ASR evaluation
+        if "${use_asr_prompt}"; then
+            # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
+            # for dset in ${valid_set}; do
+            for dset in ${test_sets}; do
+                # for dset in ${extra_valid_set}; do
+                # for dset in ${extra_valid_set} ${test_sets}; do
+                log "Running ASR evaluation on ${dset}"
+                eval_script=run-asr-eval.sh
 
+                _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/st/${peft_method}${train_suf}${decode_suf}_asr_prompt"
+                _asr_hyp="${_dir}/asr"
+                _dset=$(echo "${dset}" | sed 's/_test$//')
+
+                opts=
+                if [ "${src_lang}" == "ara" ]; then
+                    opts+=" --arabic true "
+                fi
+
+                _scoredir=${scoredir}_asr_prompt_asr
+
+                cd evaluation
+                ${eval_script} \
+                    --src_lang ${src_lang} \
+                    --hyp_asr "${_asr_hyp}" \
+                    --sclite sclite \
+                    --dset "${_dset}" \
+                    --score_dir "${_scoredir}" \
+                    --framework "huggingface" ${opts}
+                cd -
+            done
+        fi
+    done
+
+    for src_lang in ${src_langs}; do
         test_sets=${testset_dict[${src_lang}]}
         # for dset in ${valid_set} ${extra_valid_set} ${test_sets}; do
         for dset in ${test_sets}; do
             # for dset in ${valid_set} ${extra_valid_set}; do
-            log "Running ${task} evaluation on ${dset}..."
-            _task=${task}
-            if [ "${task}" == "mt" ]; then
-                _task="st"
-            fi
 
-            _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/${_mtlprefix}${task}/${peft_method}${train_suf}${decode_suf}"
+            _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/st/${peft_method}${train_suf}${decode_suf}"
+            if "${use_asr_prompt}"; then
+                _dir="${outdir}/${train_lang}/${src_lang}/${train_set}/${dset}/st/${peft_method}${train_suf}${decode_suf}_asr_prompt"
+            fi
             _dset=$(echo "${dset}" | sed 's/_test$//')
 
             opts=
@@ -278,34 +266,29 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
                 opts+=" --arabic true "
             fi
 
-            if [ ${_task} == "st" ]; then
-                if [ "${dset}" = "${valid_set}" ] || [ "${dset}" = "${extra_valid_set}" ]; then
-                    eval_script=run-devset-eval.sh
-                elif [ "${dset}" = "fleurs_test" ]; then
-                    eval_script=run-ood-eval.sh
-                else
-                    eval_script=run-testset-eval.sh
-                fi
+            eval_script=run-testset-eval.sh
 
-                opts+=" --hyp_mt ${_dir}/text "
-                opts+=" --model_tag ${model_name} "
-            elif [ ${_task} == "asr" ]; then
-                eval_script=run-asr-eval.sh
-                opts+=" --cer ${eval_cer} "
-                opts+=" --hyp_asr ${_dir}/text "
-                opts+=" --sclite ${sclite_path} "
+            opts+=" --hyp_mt ${_dir}/st "
+            opts+=" --model_tag ${model_name} "
+
+            _scoredir=${scoredir}
+            if "${use_asr_prompt}"; then
+                _scoredir=${scoredir}_asr_prompt
+            fi
+            if "${eval_multi_bleu}"; then
+                opts+=" --eval-multi-bleu true "
             fi
 
-            if "${merge_decode}"; then
-                opts+=" --merge_utt true "
-                opts+=" --data_base_dir ${merged_data_base} "
+            if "${no_glm}"; then
+                opts+=" --no-glm true "
             fi
 
             cd ${evaldir}
             ${eval_script} \
                 --src_lang ${src_lang} \
+                --model_tag ${model_name} \
                 --dset "${_dset}" \
-                --score_dir ${scoredir}/${_mtlprefix}${task}/hf_whisper_${model_name}/${src_lang}/${peft_method}/${train_set}${train_suf}${decode_suf}/${dset} \
+                --score_dir "${_scoredir}" \
                 --framework "huggingface" ${opts}
             cd -
         done

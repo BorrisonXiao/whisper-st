@@ -33,6 +33,9 @@ arabic=false
 dset=
 framework=openai
 data_base_dir=/exp/scale23/data/3-way
+eval_multi_bleu=false
+multi_bleu_ref_dir=/exp/scale23/data/prep/fisher-callhome-corpus/stm
+no_glm=false
 
 help_message=$(
     cat <<EOF
@@ -86,14 +89,25 @@ pyscripts/utils/text2stm.py \
     -r "$stm_dir/st.${src_lang}-eng.${dset}${_setsuf}.stm" \
     --dset ${dset} ${_opts}
 
-# Invoke the updated evaluation script
-./run_scale23_evals.sh \
-    --score_dir "${test_score_dir}" \
-    --src_lang "${src_lang}" \
-    --hyp_mt "${test_score_dir}/data/_hyp.stm" \
-    --ref_mt "$stm_dir/st.${src_lang}-eng.${dset}${_setsuf}.stm" \
-    --arabic "${arabic}" \
-    --python "${python}"
+if "${eval_multi_bleu}"; then
+    ./run_multi_bleu.sh \
+        --score_dir "${test_score_dir}" \
+        --src_lang "${src_lang}" \
+        --hyp_mt "${test_score_dir}/data/_hyp.stm" \
+        --ref_dir "${multi_bleu_ref_dir}" \
+        --dset "${dset}" \
+        --no_glm "${no_glm}" \
+        --split "test"
+else
+    # Invoke the updated evaluation script
+    ./run_scale23_evals.sh \
+        --score_dir "${test_score_dir}" \
+        --src_lang "${src_lang}" \
+        --hyp_mt "${test_score_dir}/data/_hyp.stm" \
+        --ref_mt "$stm_dir/st.${src_lang}-eng.${dset}${_setsuf}.stm" \
+        --arabic "${arabic}" \
+        --python "${python}"
+fi
 
 # # Convert STM files to text and utt2spk files
 # python pyscripts/utils/convert_stm.py $stm_dir/sr.${src_lang}-${src_lang}.${testset}.test.stm ${test_score_dir} text.tc.${src_lang}

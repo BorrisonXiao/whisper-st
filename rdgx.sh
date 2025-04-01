@@ -25,7 +25,8 @@ tgt_lang=eng
 dialect=
 
 train_set=train-cts
-mt_train_set=train-ood
+mt_train_set=train-cts
+# mt_train_set=train-ood
 # train_set=train-all
 train_dev=dev1
 extra_dev=dev2
@@ -43,23 +44,26 @@ master_port=29501              # Master port for distributed training (to avoid 
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 use_gpu_inference=true         # Whether to use GPU for inference
 merge_decode=false             # Whether to merge the utterances at decoding time
-skip_data_prep=true            # Whether to skip data preparation
-skip_training=false            # Whether to skip training
+skip_data_prep=false            # Whether to skip data preparation
+skip_training=true            # Whether to skip training
 use_asr_prompt=true            # Whether to mask the ASR hypothesis at BMTL training time
 min_promptless_prob=0.2        # The minimum probability for performing promptless ST finetuning
 max_promptless_prob=0.2        # The maximum probability for perforFming promptless ST finetuning
-batch_mask_prob=0.8            # The minimum probability for applying masks to the prompt
-token_mask_prob=0.2            # The probability for masking tokens in the prompt
+batch_mask_prob=0.8            # The probability for applying masks to the prompt
+token_mask_prob=0.4            # The probability for masking tokens in the prompt
 min_alpha=0.4                  # The minimum alpha for the multi-task losses, i.e. the weight for the ST loss
 max_alpha=0.5                  # The maximum alpha for the multi-task losses, i.e. the weight for the ST loss (0.0 means disable ST loss)
 dynamic_loss_start_step=1      # The step to start the dynamic loss weight
 dynamic_loss_k=0.25            # The k for the dynamic loss weight (the log base)
-use_asr_prompt_decode=true     # Whether to mask the ASR hypothesis at inference time
+use_asr_prompt_decode=true     # Whether to use the ASR hypothesis at inference time
 promptless_decode=false        # Whether to perform promptless decoding at inference time
-disable_asr_inference=false    # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
+disable_asr_inference=true     # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
 use_asr_prompt_dev=false       # Whether to use ASR prompt at dev time
 load_model_from_path=          # The path to load the model from
 resume_from_checkpoint=        # The path to resume from a checkpoint
+eval_multi_bleu=false          # Whether to evaluate the multi-BLEU score (fisher-spanish only) for the MT task
+no_glm=true                    # Whether to use the GLM for evaluation
+extra_dev_synth=dev3           # The name of the synthesized dev set
 
 # Modify this to your python path, this is due to some ESPNet environment issues
 python_hf=python3
@@ -69,8 +73,8 @@ merged_data_base=/exp/cxiao/scale23/gaussian_data_base
 opts=
 data_opts=
 if "${debug}"; then
-    model=tiny # base, large, large-v2 etc.
-    # model=large-v2 # base, large, large-v2 etc.
+    # model=tiny # base, large, large-v2 etc.
+    model=large-v2 # base, large, large-v2 etc.
     st_config=conf/tuning/whisper-debug.yaml
     mtl_config=conf/tuning/whisper-debug.yaml
     resume_from_checkpoint=
@@ -88,7 +92,7 @@ else
 fi
 
 if [ ${model} == "large-v2" ]; then
-    inference_batch_size=16
+    inference_batch_size=10
 elif [ ${model} == "medium" ]; then
     inference_batch_size=48
 elif [ ${model} == "tiny" ]; then
@@ -105,12 +109,6 @@ _lang=${src_lang}
 if [ -n "${dialect}" ]; then
     _lang=${dialect}
 fi
-asr_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/asr/${peft_method}/logdir/eval_preds.txt
-if "${prompted_mtl}"; then
-    st_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/pmtl/${peft_method}/logdir/eval_preds.txt
-else
-    st_save_eval_preds=${PWD}/ft_exp/hf_whisper_${model}${_suf}/${_lang}/${train_set}_sp/st/${peft_method}/logdir/eval_preds.txt
-fi
 
 if [ -n "${load_model_from_path}" ]; then
     opts+=" --load_model_from_path ${load_model_from_path} "
@@ -118,13 +116,13 @@ fi
 if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
 fi
+if [ -n "${eval_multi_bleu}" ]; then
+    opts+=" --eval_multi_bleu ${eval_multi_bleu} "
+fi
+if [ -n "${no_glm}" ]; then
+    opts+=" --no_glm ${no_glm} "
+fi
 opts+=" --debug ${debug} "
-if [ -n "${asr_save_eval_preds}" ]; then
-    opts+=" --asr_save_eval_preds ${asr_save_eval_preds} "
-fi
-if [ -n "${st_save_eval_preds}" ]; then
-    opts+=" --st_save_eval_preds ${st_save_eval_preds} "
-fi
 opts+=" --use_asr_prompt ${use_asr_prompt}"
 opts+=" --min_promptless_prob ${min_promptless_prob} "
 opts+=" --max_promptless_prob ${max_promptless_prob} "
@@ -146,7 +144,7 @@ testset_dict+=(
     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
-# test_set="fleurs_test"
+# test_set="europarl_test"
 
 framework=huggingface # huggingface, openai
 preprocessing_num_proc=32
@@ -182,50 +180,50 @@ if [ -n "$dialect" ]; then
 fi
 
 if ! "${skip_data_prep}"; then
-    # Prepare the MT data from the OOD training set, note that merging is not applied for MT data
-    # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
-    local_data_opts='--stage 0 --stop_stage 100 --fs_str '
-    local_data_opts+=$fs_str
-    local_data_opts+=' --stereo '
-    local_data_opts+=$stereo
-    local_data_opts+=' --ignore_segments '
-    local_data_opts+=$ignore_segments
-    local_data_opts+=' --min_duration '
-    local_data_opts+=$min_duration
-    local_data_opts+=' --start_at_zero '
-    local_data_opts+=$start_at_zero
-    local_data_opts+=' --train_set '
-    local_data_opts+=$mt_train_set
-    local_data_opts+=' --dev_set '
-    local_data_opts+=$train_dev
-    local_data_opts+=' --src_lang '
-    local_data_opts+=$src_lang
-    local_data_opts+=' --datadir '
-    local_data_opts+=$datadir
-    ./data.sh \
-        --local_data_opts "$local_data_opts" \
-        --audio_format "flac.ark" \
-        --nj 80 \
-        --fs ${fs} \
-        --src_lang ${src_lang} \
-        --tgt_lang ${tgt_lang} \
-        --src_case ${src_case} \
-        --tgt_case ${tgt_case} \
-        --feats_type raw \
-        --train_set "${mt_train_set}" \
-        --valid_set "${train_dev}" \
-        --test_sets "${test_set}" \
-        --stage 6 \
-        --stop_stage 6 \
-        --datadir ${datadir} \
-        --dumpdir "${dumpdir}" \
-        --save_wav true \
-        --framework ${framework} \
-        --hf_datadir ${org_hf_datadir} \
-        --extra_valid_set "${extra_dev}" \
-        --merge_utt false \
-        --remove_ark ${remove_ark} \
-        --python_hf ${python_hf} ${data_opts}
+    # # Prepare the MT data from the OOD training set, note that merging is not applied for MT data
+    # # There might be a better way to do this, maybe passing a yaml file that gets parsed by the local/data.sh
+    # local_data_opts='--stage 0 --stop_stage 100 --fs_str '
+    # local_data_opts+=$fs_str
+    # local_data_opts+=' --stereo '
+    # local_data_opts+=$stereo
+    # local_data_opts+=' --ignore_segments '
+    # local_data_opts+=$ignore_segments
+    # local_data_opts+=' --min_duration '
+    # local_data_opts+=$min_duration
+    # local_data_opts+=' --start_at_zero '
+    # local_data_opts+=$start_at_zero
+    # local_data_opts+=' --train_set '
+    # local_data_opts+=$mt_train_set
+    # local_data_opts+=' --dev_set '
+    # local_data_opts+=$train_dev
+    # local_data_opts+=' --src_lang '
+    # local_data_opts+=$src_lang
+    # local_data_opts+=' --datadir '
+    # local_data_opts+=$datadir
+    # ./data.sh \
+    #     --local_data_opts "$local_data_opts" \
+    #     --audio_format "flac.ark" \
+    #     --nj 80 \
+    #     --fs ${fs} \
+    #     --src_lang ${src_lang} \
+    #     --tgt_lang ${tgt_lang} \
+    #     --src_case ${src_case} \
+    #     --tgt_case ${tgt_case} \
+    #     --feats_type raw \
+    #     --train_set "${mt_train_set}" \
+    #     --valid_set "${train_dev}" \
+    #     --test_sets "${test_set}" \
+    #     --stage 0 \
+    #     --stop_stage 0 \
+    #     --datadir ${datadir} \
+    #     --dumpdir "${dumpdir}" \
+    #     --save_wav true \
+    #     --framework ${framework} \
+    #     --hf_datadir ${org_hf_datadir} \
+    #     --extra_valid_set "${extra_dev}" \
+    #     --merge_utt false \
+    #     --remove_ark ${remove_ark} \
+    #     --python_hf ${python_hf} ${data_opts}
 
     # Prepare the merged ST data from the cts training set
     # local_data_opts='--stage 0 --stop_stage 100 --fs_str '
@@ -272,12 +270,34 @@ if ! "${skip_data_prep}"; then
     #     --remove_ark ${remove_ark} \
     #     --gaussian_merge ${prompted_mtl} \
     #     --python_hf ${python_hf} ${data_opts}
+
+    # Run ASR on the extra dev set
+    if [ -n "${extra_dev_synth}" ]; then
+        ./synthesize_data.sh \
+            --src_dset "${extra_dev}" \
+            --tgt_dset ${extra_dev_synth} \
+            --key_file "data/${src_lang}/${extra_dev}/text" \
+            --stage 1 \
+            --stop_stage 2 \
+            --model_name ${model} \
+            --hf_datadir ${org_hf_datadir} \
+            --src_lang ${src_lang} \
+            --tgt_lang ${tgt_lang} \
+            --save_dir ${hf_datadir} \
+            --dumpdir ${dumpdir} \
+            --inference_nj ${inference_nj} \
+            --inference_batch_size ${inference_batch_size}
+
+        extra_dev=${extra_dev_synth}
+    fi
+
+    # TODO (Cihan): This may be a bit confusing, we are using the original dev set for eval but saving it to the merged directory
 fi
 
 if ! "${skip_training}"; then
     ./mml.sh \
         --ngpu 8 \
-        --expdir ft2_exp \
+        --expdir ft_cts_cts_mask \
         --nj 80 \
         --st_config ${st_config} \
         --mtl_config ${mtl_config} \
@@ -290,7 +310,7 @@ if ! "${skip_training}"; then
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
         --stage 1 \
-        --stop_stage 3 \
+        --stop_stage 1 \
         --dumpdir "${dumpdir}" \
         --st_tag whisper_${model} \
         --model_name ${model} \
@@ -314,5 +334,6 @@ if ! "${skip_training}"; then
         --disable_asr_inference ${disable_asr_inference} \
         --use_asr_prompt_dev ${use_asr_prompt_dev} \
         --num_beams 1 \
+        --score_dir_base scores_ft_cts_cts_mask \
         --merge_decode ${merge_decode} ${opts}
 fi

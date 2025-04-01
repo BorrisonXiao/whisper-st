@@ -155,16 +155,16 @@ def find_wav_files(directory: str) -> List[str]:
     for root, _, files in os.walk(directory):
         for file in files:
             if IGNORE_LIST:
-                if file.endswith(".wav.scp") and not any(file.startswith(ignore) for ignore in IGNORE_LIST):
+                if file.endswith("wav.scp") and not any(file.startswith(ignore) for ignore in IGNORE_LIST):
                     wav_files.append(os.path.join(root, file))
             else:
-                if file.endswith(".wav.scp"):
+                if file.endswith("wav.scp"):
                     wav_files.append(os.path.join(root, file))
 
     return wav_files
 
 
-def process_lines(wav_file, transcript_file, translation_file):
+def process_lines(transcript_file, translation_file):
     """
     Process lines from wav, transcript and translation files.
 
@@ -210,29 +210,25 @@ def process_lines(wav_file, transcript_file, translation_file):
     #             (wav_line, transcript_line, translation_line))
     #         logging.debug(reordered_lines[:3])
     res = {}
-    with open(wav_file, mode="r") as w_f, open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
-        for line in w_f:
-            line = line.strip()
-            utterance_id, wav_file_path = line.split()
-            res[utterance_id] = {"wav_line": line}
+    with open(transcript_file, mode="r") as t_f, open(translation_file, mode="r") as tr_f:
         for line in t_f:
             line = line.strip()
             transcript_key, transcript = line.split()[0], " ".join(line.split()[1:])
-            res[transcript_key]["transcript_line"] = line
+            res[transcript_key] = {"transcript_line": line}
         for line in tr_f:
             line = line.strip()
             translation_key, translation = line.split()[0], " ".join(line.split()[1:])
             res[translation_key]["translation_line"] = line
 
     for key, value in res.items():
-        reordered_lines.append((value["wav_line"], value["transcript_line"], value["translation_line"]))
+        reordered_lines.append((value["transcript_line"], value["translation_line"]))
 
     return reordered_lines
 
 
-def load_audio(reordered_lines, wav_file):
+def load_text(reordered_lines, transcript_file):
     """
-    Load audio from reordered lines.
+    Load text from reordered lines.
 
     Args:
         reordered_lines (List[Tuple[str, str, str]]): List of tuples containing lines from wav, transcript and translation files.
@@ -250,24 +246,20 @@ def load_audio(reordered_lines, wav_file):
     audio_files, utterance_ids, transcripts, translations = [], [], [], []
     src_lang, tgt_lang = [], []
 
-    for wav_line, transcript_line, translation_line in tqdm(reordered_lines, desc=f"Loading audio: {wav_file}"):
-        wav_line, transcript_line, translation_line = wav_line.strip(
-        ), transcript_line.strip(), translation_line.strip()
-        utterance_id, wav_file_path = wav_line.split()
+    for transcript_line, translation_line in tqdm(reordered_lines, desc=f"Loading text: {transcript_file}"):
+        transcript_line, translation_line = transcript_line.strip(), translation_line.strip()
         transcript_key, transcript = transcript_line.split(
         )[0], " ".join(transcript_line.split()[1:])
         translation_key, translation = translation_line.split(
         )[0], " ".join(translation_line.split()[1:])
 
-        audio_files.append(wav_file_path)
-        utterance_ids.append(utterance_id)
+        utterance_ids.append(transcript_key)
         transcripts.append(transcript)
         translations.append(translation)
-        src_lang.append(os.path.splitext(os.path.splitext(
-            os.path.basename(wav_file))[0])[0].split('.')[0])
+        src_lang.append(transcript_key.split('.')[-1])
         tgt_lang.append(TARGET_LANGUAGE)
 
-    return {"audio": audio_files, "uttid": utterance_ids, "transcript": transcripts, "translation": translations, "src_lang": src_lang, "tgt_lang": tgt_lang}
+    return {"uttid": utterance_ids, "transcript": transcripts, "translation": translations, "src_lang": src_lang, "tgt_lang": tgt_lang}
 
 
 def create_dataset(dataset, transcript_file):
@@ -294,15 +286,7 @@ def create_dataset(dataset, transcript_file):
         >>> create_dataset(dataset, transcript_file)
         # Returns a HuggingFace dataset
     """
-    text_file_name, _ = os.path.splitext(os.path.basename(transcript_file))
-    logging.info("-----------------------------")
-    logging.info(text_file_name)
-    logging.info("-----------------------------")
-
     features = Features({
-        "audio": Audio(
-            sampling_rate=AUDIO_SAMPLING_RATE,
-        ),
         "uttid": Value(dtype="string"),
         "transcript": Value(dtype="string"),
         "translation": Value(dtype="string"),
@@ -313,7 +297,7 @@ def create_dataset(dataset, transcript_file):
     return Dataset.from_dict(dataset, features=features)
 
 
-def process_wav_text_file(wav_text_file: Tuple[str, str, str]) -> Tuple[str, Dataset]:
+def process_wav_text_file(wav_text_file: Tuple[str, str]) -> Tuple[str, Dataset]:
     """
     Process a wav and text file and create a HuggingFace dataset.
 
@@ -328,17 +312,13 @@ def process_wav_text_file(wav_text_file: Tuple[str, str, str]) -> Tuple[str, Dat
         >>> process_wav_text_file(wav_text_file)
         # Returns the name of the transcript file and the HuggingFace dataset
     """
-    wav_file, transcript_file, translation_file = wav_text_file
-    logging.info(f"----------------------------------\n\
-                  Processing following wav file: {wav_file}\n\
-                  ----------------------------------")
-    reordered_lines = process_lines(
-        wav_file, transcript_file, translation_file)
-    dataset = load_audio(reordered_lines, wav_file)
-    return os.path.splitext(os.path.basename(transcript_file))[0], create_dataset(dataset, transcript_file)
+    transcript_file, translation_file = wav_text_file
+    reordered_lines = process_lines(transcript_file, translation_file)
+    dataset = load_text(reordered_lines, transcript_file)
+    return create_dataset(dataset, transcript_file)
 
 
-def create_dataset_from_wav_text_files(directory: str) -> Dict[str, Dataset]:
+def create_dataset_from_wav_text_files(directory: str, src_lang: str) -> Dict[str, Dataset]:
     """
     Create a HuggingFace dataset from wav and text files in the given directory.
 
@@ -353,25 +333,15 @@ def create_dataset_from_wav_text_files(directory: str) -> Dict[str, Dataset]:
         >>> create_dataset_from_wav_text_files(directory)
         # Returns a dictionary of HuggingFace datasets
     """
-    all_wav_files = find_wav_files(directory)
+    wav_text_files =[(Path(directory) / f"text.tc.{src_lang}", Path(directory) / f"text.tc.eng")]
 
-    print(f"Number of wav files: {len(all_wav_files)}")
-
-    import pprint
-    pprint.pprint(f"Processing following wav files: {all_wav_files}")
-
-    wav_text_files = [(wav_file, *find_text_files_from_wav_file(wav_file, directory))
-                      for wav_file in all_wav_files]
-    logging.info(
-        f"Found {len(all_wav_files)} wav files and corresponding text files.")
-
+    # with ProcessPoolExecutor() as executor:
+    #     for text_file_name, dataset in executor.map(process_wav_text_file, wav_text_files):
+    #         hf_datasets[text_file_name] = dataset
     hf_datasets = {}
-
-    with ProcessPoolExecutor() as executor:
-        for text_file_name, dataset in executor.map(process_wav_text_file, wav_text_files):
-            hf_datasets[text_file_name] = dataset
-    # for (text_file_name, dataset) in process_wav_text_file(wav_text_files[0]):
-    #     hf_datasets[text_file_name] = dataset
+    train_set_name = Path(directory).name
+    print(f"train_set_name: {train_set_name}")
+    hf_datasets[train_set_name] = process_wav_text_file(wav_text_files[0])
 
     return hf_datasets
 
@@ -397,10 +367,10 @@ def main():
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    hf_datasets = create_dataset_from_wav_text_files(raw_data_location)
+    hf_datasets = create_dataset_from_wav_text_files(raw_data_location, src_lang=args.src_lang)
 
     for key, dataset in hf_datasets.items():
-        dataset_path = f"{output_path}/{key}/"
+        dataset_path = f"{output_path}/"
 
         if not os.path.exists(dataset_path):
             os.makedirs(dataset_path)

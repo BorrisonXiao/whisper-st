@@ -24,6 +24,7 @@ LANGS = {
     "rus": "russian",
     "tus": "tunisian",
     "eng": "english",
+    "fr": "french",
 }
 
 

@@ -76,7 +76,7 @@ def _create_prompted_inputs(
     tokenizer = copy.deepcopy(tokenizer.tokenizer)
     # Enforce left padding for generation
     tokenizer.padding_side = "left"
-    tokenizer.model_max_length = 300  # Max is 448, left some room for the prompt
+    tokenizer.model_max_length = 128  # Max is 448, left some room for the prompt
 
     # Add asr reference prompt to the prefix
     # i.e. <startofprev> [asr_ref] [st_ref]
@@ -98,7 +98,7 @@ def _create_prompted_inputs(
     # Otherwise, the decoder_input_ids are _labels
     decoder_input_ids = [{"input_ids": _label} for _label in _labels]
     decoder_input_ids = tokenizer.pad(decoder_input_ids, return_tensors="pt")
-    assert decoder_input_ids["input_ids"].shape[1] <= 300, f"decoder_input_ids['input_ids'].shape[1]: {decoder_input_ids['input_ids'].shape[1]}"
+    assert decoder_input_ids["input_ids"].shape[1] <= 120, f"decoder_input_ids['input_ids'].shape[1]: {decoder_input_ids['input_ids'].shape[1]}"
     # Note that no right padding is applied to the labels since they are set to -100 already in the collator
     decoder_input_ids = decoder_input_ids["input_ids"]
     inputs_st['decoder_input_ids'] = decoder_input_ids
@@ -162,6 +162,9 @@ def inference(
     print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
     print(f"batch_size: {batch_size}")
     print(f"num_beams: {num_beams}")
+    
+    if use_asr_hyp:
+        print("Using ASR hypothesis as the prompt to the ST inference")
 
     # Load the HF dataset
     ds = load_from_disk(dset)
@@ -178,6 +181,7 @@ def inference(
     # Load the ASR hypothesis file
     asr_hyps = None
     if asr_hyp is not None:
+        print(f"Loading ASR hypothesis from {asr_hyp}, instead of the model's ASR outputs")
         with open(asr_hyp, "r") as f:
             lines = f.readlines()
         asr_hyps = [line.strip().split(maxsplit=1) for line in lines]
@@ -192,13 +196,60 @@ def inference(
     output_asr = output_dir / "asr"
     output_st = output_dir / "st"
     do_asr = use_asr_hyp or not disable_asr
-    if do_asr:
-        f = open(output_asr, "w")
-    else:
+    if asr_hyp is not None:
+        print(f"Skipping ASR inference as the ASR hypothesis is provided at {asr_hyp}...")
+        do_asr = False
+    total_len = len(ds) if keyfile is None else len(keys)
+    if not do_asr:
         print(
-            f"Skipping ASR inference as use-asr-hyp is {use_asr_hyp} and disable-asr is {disable_asr}...")
+            f"Skipping ASR inference as use-asr-hyp is {use_asr_hyp}, disable-asr is {disable_asr} and asr-hyp is {asr_hyp}")
+    else:
+        all_hyps = {}
+        with open(output_asr, "w") as f:
+            pbar = tqdm(range(total_len))
+            batch = []
+            uttids = []
+            for uttidx, utt in enumerate(ds):
+                uttid = utt["uttid"]
+                if keyfile is not None and uttid not in keys:
+                    continue
+                uttids.append(uttid)
+                batch.append(utt)
+                if len(batch) < batch_size and uttid != last_uttid:
+                    continue
+                # Process the batch
+                input_speech = [utt["audio"]["array"] for utt in batch]
+                samping_rate = batch[0]["audio"]["sampling_rate"]
+                input_features = processor(
+                    input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
+
+                # Generate token ids
+                model.generate = partial(
+                    model.generate, language=src_lang, task="transcribe")
+                predicted_ids = model.generate(
+                    input_features, max_length=128, forced_decoder_ids=asr_forced_decoder_ids)
+                # Decode token ids to text
+                hyps = processor.batch_decode(
+                    predicted_ids, skip_special_tokens=True)
+
+                all_hyps.update({uttid: hyp for uttid, hyp in zip(uttids, hyps)})
+
+                for i, hyp in enumerate(hyps):
+                    print(uttids[i], hyp.strip(), file=f)
+                
+                f.flush()
+                pbar.update(len(batch))
+                
+                # Reset the batch
+                batch = []
+                uttids = []
+                
+        if asr_hyps is None:
+            print("Using on-the-fly ASR hypothesis as the prompt to the ST inference")
+            asr_hyps = all_hyps
+            
     with open(output_st, "w") as f_st:
-        total_len = len(ds) if keyfile is None else len(keys)
+        # Do the conditioned ST inference
         pbar = tqdm(range(total_len))
         batch = []
         uttids = []
@@ -209,7 +260,6 @@ def inference(
             if asr_hyps is not None:
                 # Replace the transcript with the ASR hypothesis
                 utt["transcript"] = asr_hyps[uttid]
-            # Accumulate the batch
             uttids.append(uttid)
             batch.append(utt)
             if len(batch) < batch_size and uttid != last_uttid:
@@ -225,19 +275,6 @@ def inference(
                     (processor.feature_extractor.feature_size, processor.feature_extractor.nb_max_frames)).numpy()} for _ in input_speech]
                 input_features = processor.feature_extractor.pad(
                     _input_features, return_tensors="pt")['input_features']
-
-            if not do_asr:
-                # Place holder if ASR is disabled
-                hyps = ["" for _ in range(len(batch))]
-            else:
-                # Generate token ids
-                model.generate = partial(
-                    model.generate, language=src_lang, task="transcribe")
-                predicted_ids = model.generate(
-                    input_features, max_length=448, forced_decoder_ids=asr_forced_decoder_ids)
-                # Decode token ids to text
-                hyps = processor.batch_decode(
-                    predicted_ids, skip_special_tokens=True)
 
             st_predicted_ids = []
             model.generate = partial(
@@ -294,7 +331,7 @@ def inference(
             inputs_st = _create_prompted_inputs(
                 input_features=input_features, tokenizer=processor, prompts=transcripts, device=device).to(device=device)
             raw_st_predicted_ids = model.generate(
-                **inputs_st, max_length=448, num_beams=num_beams)
+                **inputs_st, max_length=256, num_beams=1) # Currently only supports greedy decoding
             # Need to mask everything before the first <|startoftranscript|> token with the special token
             st_predicted_ids = copy.deepcopy(raw_st_predicted_ids)
             for i, st_predicted_id in enumerate(raw_st_predicted_ids):
@@ -306,21 +343,14 @@ def inference(
                 st_predicted_ids[i] = st_predicted_id
             st_hyps = processor.tokenizer.batch_decode(
                 st_predicted_ids, skip_special_tokens=True)
-            for i, hyp in enumerate(hyps):
-                if do_asr:
-                    print(uttids[i], hyp, file=f)
-                print(uttids[i], st_hyps[i].strip(), file=f_st)
-            if do_asr:
-                f.flush()
+            for i, hyp in enumerate(st_hyps):
+                print(uttids[i], hyp.strip(), file=f_st)
             f_st.flush()
             pbar.update(len(batch))
 
             # Reset the batch
             batch = []
             uttids = []
-
-        if do_asr:
-            f.close()
 
 
 def main():

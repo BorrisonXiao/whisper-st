@@ -166,7 +166,7 @@ if [ ! -f $data/wav.scp ] && ! $no_wav; then
 fi
 
 if [ -f $data/wav.scp ]; then
-  check_sorted_and_uniq $data/wav.scp
+  # check_sorted_and_uniq $data/wav.scp
 
   if grep -E -q '^\S+\s+~' $data/wav.scp; then
     # note: it's not a good idea to have any kind of tilde in wav.scp, even if

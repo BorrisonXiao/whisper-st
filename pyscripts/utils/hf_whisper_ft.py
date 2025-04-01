@@ -26,6 +26,10 @@ from transformers.trainer_callback import (
 from transformers.trainer_whisper import _schedule_dynamic_mtl_weight
 from transformers.models.whisper_st.processing_whisper import WhisperProcessor
 from transformers.models.whisper_st.modeling_whisper import WhisperForConditionalGeneration
+import os
+
+# Fix the random seed for reproducibility
+torch.manual_seed(1024)
 
 
 LANGS = {
@@ -179,7 +183,7 @@ def prepare_dataset(
                     f"Feature directory {_load_file_dir} does not exist, extracting features...")
 
             processor = WhisperProcessor.from_pretrained(
-                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode in ["st", "mt", "umt"] else "transcribe") if not _processor else _processor
+                f"openai/whisper-{model_name}", language=LANGS[lang], task="translate" if mode in ["st"] else "transcribe") if not _processor else _processor
 
             if mode in ["pmtl", "mt", "umt"]:
                 if normalize_text:
@@ -190,13 +194,12 @@ def prepare_dataset(
 
             def _prepare_dataset(batch):
                 audio = batch["audio"] if "audio" in batch else None
-                
+
                 # The audio will be a learnable audio feature mask embedding
                 if mode not in ["mt", "umt"]:
                     if not on_the_fly_feat_extraction:
                         batch["input_features"] = processor.feature_extractor(
                             audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
-                    
 
                 if mode in ["pmtl", "mt", "umt"]:
                     scp = std_basic(batch["transcript"]).strip(
@@ -230,8 +233,10 @@ def prepare_dataset(
 
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
                 col for col in dset.column_names if col != "audio"]
+            print(f"num_proc: {min(preprocessing_num_proc, os.cpu_count())}")
             processed_dset = dset.map(_prepare_dataset,
-                                      num_proc=preprocessing_num_proc,
+                                      num_proc=min(
+                                          preprocessing_num_proc, os.cpu_count()),
                                       remove_columns=col_names,
                                       desc="Preprocessing dataset")
             # Filter out utterances whose token length exceeds 448
@@ -280,7 +285,8 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
         # Default setting all features to zeros for MT training
-        input_features = [{"input_features": torch.zeros((self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
+        input_features = [{"input_features": torch.zeros(
+            (self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
         for i, feature in enumerate(features):
             if "input_features" not in feature or feature["input_features"] is None:
                 if "audio" in feature:
@@ -288,12 +294,13 @@ class DataCollatorSpeechSeq2SeqWithPadding:
                     input_features[i] = {"input_features": self.processor.feature_extractor(
                         feature["audio"]["array"], sampling_rate=feature["audio"]["sampling_rate"]).input_features[0]}
             else:
-                input_features[i] = {"input_features": feature["input_features"]}
-        
-        breakpoint()
+                input_features[i] = {
+                    "input_features": feature["input_features"]}
+
         # Convert to tensors
         # input_features[0] = {"input_features": self.processor.feature_extractor(torch.Tensor()).input_features[0]}
-        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
+        batch = self.processor.feature_extractor.pad(
+            input_features, return_tensors="pt")
         # if input_features[0]["input_features"] is not None:
         #     batch = self.processor.feature_extractor.pad(
         #         input_features, return_tensors="pt")
@@ -504,8 +511,8 @@ def finetune(
     use_asr_prompt_dev=False,
     min_promptless_prob=0.0,
     max_promptless_prob=0.0,
-    max_sample_prob=0.0,
-    min_sample_prob=0.0,
+    batch_mask_prob=0.0,
+    token_mask_prob=0.0,
     min_alpha=0.5,
     max_alpha=0.5,
     loss_warmup='auto',
@@ -531,6 +538,10 @@ def finetune(
     # Step 4: Define the data collator
     processor = WhisperProcessor.from_pretrained(
         f"openai/whisper-{model_name}")
+
+    # Here we use the unused <|startoflm|> token as the mask token
+    processor.tokenizer.mask_token = "<|startoflm|>"
+
     # If new languages are added, we need to add the corresponding language codes to the processor
     # TODO: Currently supports only one dialect
     dialects_dict = None
@@ -555,7 +566,7 @@ def finetune(
     def compute_metrics(pred, normalize_eval=False):
         pred_ids = pred.predictions
         label_ids = pred.label_ids
-        
+
         # compute loss only on tokens after the first <|startoftranscript|> token
         sot_token_id = processor.tokenizer.convert_tokens_to_ids(
             "<|startoftranscript|>")
@@ -618,7 +629,7 @@ def finetune(
             cer = metric_cer.compute(
                 predictions=pred_str, references=label_str)
             return {"cer": cer}
-        else:                
+        else:
             # Use sacrebleu for translation training
             sacrebleu = metric_sacrebleu.compute(
                 predictions=pred_str, references=label_str)
@@ -677,11 +688,20 @@ def finetune(
             resume_from_checkpoint,
             quantization_config=quantization_config,
         )
+        
+    # We re-initialize the mask token's decoder embedding to be the same as the <|startofprev|> token with a little noise
+    mask_token_id = processor.tokenizer.convert_tokens_to_ids(
+        processor.tokenizer.mask_token)
+    startofprev_token_id = processor.tokenizer.convert_tokens_to_ids(
+        "<|startofprev|>")
+    model.model.decoder.embed_tokens.weight.data[mask_token_id] = model.model.decoder.embed_tokens.weight.data[startofprev_token_id] + \
+        torch.normal(
+            mean=0, std=0.02, size=model.model.decoder.embed_tokens.weight.data[startofprev_token_id].shape)
 
     if dialect is not None:
         model.resize_token_embeddings(len(processor.tokenizer))
         # Save the model with the new embeddings
-        model.save_pretrained(output_dir / "base_model")
+    model.save_pretrained(output_dir / "base_model")
 
     if peft_method:
         if peft_method == "lora" or peft_method == "qlora":
@@ -698,7 +718,8 @@ def finetune(
             else:
                 model.config.use_reentrant = False
             model = get_peft_model(model, peft_config)
-            if dialect is not None:
+            # if dialect is not None:
+            if True:
                 # Modify the peft config so that it points to the new base model
                 model.peft_config['default'].base_model_name_or_path = str(
                     output_dir.absolute() / "base_model")
@@ -754,7 +775,7 @@ def finetune(
                     max_weight=self._trainer.max_alpha,
                 )
                 logs["st_loss_weight"] = _alpha
-                print(logs)
+                # print(logs)
 
     trainer = WhisperTrainer(
         model=model,
@@ -767,16 +788,16 @@ def finetune(
         use_asr_prompt=use_asr_prompt,
         use_asr_prompt_dev=use_asr_prompt_dev,
         src_lang=LANGS[src_lang],
-        eval_steps=10,
+        eval_steps=15,
         min_promptless_prob=min_promptless_prob,
         max_promptless_prob=max_promptless_prob,
-        max_sample_prob=max_sample_prob,
-        min_sample_prob=min_sample_prob,
+        batch_mask_prob=batch_mask_prob,
+        token_mask_prob=token_mask_prob,
         min_alpha=min_alpha,
         max_alpha=max_alpha,
         loss_warmup=loss_warmup,
         loss_base=loss_base,
-        mask_labels_src=mode != "umt",
+        mask_labels_src=mode not in ["umt", "mml"],
     )
     trainer.add_callback(PrinterCallback(trainer))
 
@@ -813,7 +834,8 @@ def main():
                         default="ft_exp/hf_whisper_tiny/cmn/asr/",
                         help="Path to the output directory")
     parser.add_argument("--mode", type=str, default="asr",
-                        choices=["asr", "st", "mtl", "pmtl", "mt", "umt", "mml"],
+                        choices=["asr", "st", "mtl",
+                                 "pmtl", "mt", "umt", "mml"],
                         help="Task to perform")
     parser.add_argument("--preprocessing_num_proc", type=int, default=4,
                         help="Number of processes to use for preprocessing")
@@ -853,12 +875,10 @@ def main():
                         help="The minimum probability for performing promptless ST finetuning.")
     parser.add_argument("--max-promptless-prob", type=float, default=0.0,
                         help="The minimum probability for performing promptless ST finetuning.")
-    parser.add_argument("--min-sample-prob", type=float, default=0.0,
-                        help="Minimum sampling probability for the BMTL training.")
-    parser.add_argument("--max-sample-prob", type=float, default=0.0,
-                        help="Maximum sampling probability for the BMTL training. \
-                        Note that the sampling mechanism is disabled if this is set to 0.0.\
-                        Also note that the sampling probability will be linearly increased from min_sample_prob to max_sample_prob during the training AFTER the warmup steps.")
+    parser.add_argument("--batch-mask-prob", type=float, default=0.0,
+                        help="Probability for masking a batch in the prompted training")
+    parser.add_argument("--token-mask-prob", type=float, default=0.0,
+                        help="Probability for masking a token in the prompted training")
     parser.add_argument("--min-alpha", type=float, default=.5,
                         help="Minimum alpha for the PMTL training.")
     parser.add_argument("--max-alpha", type=float, default=.5,
@@ -916,8 +936,8 @@ def main():
             use_asr_prompt_dev=args.use_asr_prompt_dev,
             min_promptless_prob=args.min_promptless_prob,
             max_promptless_prob=args.max_promptless_prob,
-            max_sample_prob=args.max_sample_prob,
-            min_sample_prob=args.min_sample_prob,
+            batch_mask_prob=args.batch_mask_prob,
+            token_mask_prob=args.token_mask_prob,
             max_alpha=args.max_alpha,
             min_alpha=args.min_alpha,
             loss_warmup=args.loss_warmup,

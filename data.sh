@@ -113,23 +113,6 @@ else
 fi
 . ./cmd.sh
 
-# Check required arguments
-[ -z "${train_set}" ] && {
-    log "${help_message}"
-    log "Error: --train_set is required"
-    exit 2
-}
-[ -z "${valid_set}" ] && {
-    log "${help_message}"
-    log "Error: --valid_set is required"
-    exit 2
-}
-[ -z "${test_sets}" ] && {
-    log "${help_message}"
-    log "Error: --test_sets is required"
-    exit 2
-}
-
 # Check feature type
 if [ "${feats_type}" = raw ]; then
     data_feats=${dumpdir}/raw
@@ -208,6 +191,11 @@ if ! "${skip_data_prep}"; then
             # i.e. the input file format and rate is same as the output.
 
             for dset in "${train_set}" "${valid_set}" "${extra_valid_set}" ${test_sets}; do
+                # Skip if dset is an empty string
+                if [ -z "${dset}" ]; then
+                    log "Skip empty dataset"
+                    continue
+                fi
                 # for dset in ${extra_valid_set}; do
                 if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                     _suf="/org"
@@ -277,6 +265,11 @@ if ! "${skip_data_prep}"; then
     if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         log "Stage 4: Merge the wav.scp for the raw wav files to be decoded."
         for dset in "${train_set}" "${valid_set}" "${extra_valid_set}" ${test_sets}; do
+            # Skip if dset is an empty string
+            if [ -z "${dset}" ]; then
+                log "Skip empty dataset"
+                continue
+            fi
             if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                 _suf="/org"
             else

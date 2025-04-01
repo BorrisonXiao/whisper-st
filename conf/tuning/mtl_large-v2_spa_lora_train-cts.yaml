@@ -1,9 +1,9 @@
 Seq2SeqTrainingArguments:
   per_device_train_batch_size: 8
-  per_device_eval_batch_size: 32
+  per_device_eval_batch_size: 16
   gradient_accumulation_steps: 1
   warmup_steps: 500
-  max_steps: 8000
+  max_steps: 10000
   learning_rate: 1e-5
   weight_decay: 5e-4
   fp16: True
@@ -17,7 +17,7 @@ Seq2SeqTrainingArguments:
   save_steps: 400
   load_best_model_at_end: False
   gradient_checkpointing: True
-  save_total_limit: 3
+  save_total_limit: 5
   metric_for_best_model: "sacrebleu"
   greater_is_better: True
   remove_unused_columns: False

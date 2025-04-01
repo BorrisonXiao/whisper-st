@@ -25,11 +25,18 @@ def text2stm(text_file, stm_file, ref_stm_file=None, dset="dev", merge_utt=False
             elif dset == "fleurs":
                 spkid1, spkid2, filename, info = splitted
                 spkid = f"{spkid1}-{spkid2}"
+            elif dset == "europarl":
+                spkid, filename1, filename2, info = splitted
+                filename = f"{filename1}-{filename2}"
             else:
                 raise ValueError("Invalid uttid: {}".format(uttid))
-        elif len(splitted) == 5 and dset == "fleurs" and merge_utt:
-            spkid1, spkid2, filename, _info, info = splitted
-            spkid = f"{spkid1}-{spkid2}"
+        elif len(splitted) == 5:
+            if dset == "fleurs" and merge_utt:
+                spkid1, spkid2, filename, _info, info = splitted
+                spkid = f"{spkid1}-{spkid2}"
+            elif dset == "europarl":
+                spkid, filename1, filename2, filename3, info = splitted
+                filename = f"{filename1}-{filename2}-{filename3}"
         else:
             raise ValueError("Invalid uttid: {}".format(uttid))
         channel, start, end = info.split("_")

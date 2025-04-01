@@ -31,7 +31,7 @@ declare -A cts_testset_dict
 declare -A ood_testset_dict
 
 cts_testset_dict+=( ["ara"]="iwslt22" ["cmn"]="bbn_cts_bolt" ["kor"]="uhura" ["rus"]="uhura" ["spa"]="fisher callhome" )
-ood_testset_dict+=( ["ara"]="fleurs" ["cmn"]="fleurs" ["kor"]="fleurs" ["rus"]="fleurs" ["spa"]="fleurs" )
+ood_testset_dict+=( ["ara"]="fleurs" ["cmn"]="fleurs" ["kor"]="fleurs" ["rus"]="fleurs" ["spa"]="fleurs mtedx europarl" )
 
 cts_testlist=${cts_testset_dict[${src_lang}]} #"fisher callhome fleurs" # This option is to run eval
 ood_testset=${ood_testset_dict[${src_lang}]}
@@ -65,6 +65,8 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     fi
 
     for set in $train_set $dev_set $extra_dev_set; do
+        # Skip if set is empty string
+        [ -z $set ] && continue
         log "Preparing $set"
 
         output_dir=$(pwd)/${datadir}/${set}
@@ -81,15 +83,25 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
         python local/convert_stm_to_espnet.py $tgt_stm $output_dir/tmp_tgt $opts
 
         # Copy text from target into $output_dir
-        cp $output_dir/tmp_tgt/text $output_dir/text.tc.eng
+        sort -u -o $output_dir/text.tc.eng $output_dir/tmp_tgt/text 
 
         # Copy source text to include tc.${src_lang}
-        cp $output_dir/text $output_dir/text.tc.${src_lang}
+        sort -u -o $output_dir/text.tc.${src_lang} $output_dir/text
+        cp $output_dir/text.tc.${src_lang} $output_dir/text
+
+        # Sort the wav.scp file
+        export LC_ALL=C
+        sort -u -o $output_dir/wav.scp $output_dir/wav.scp
+
+        # Sort the segments file
+        sort -u -o $output_dir/segments $output_dir/segments
 
         rm -r ${output_dir}/tmp_tgt
     done
 
     for testset in $cts_testlist; do
+        # Skip if set is empty string
+        [ -z $testset ] && continue
         log "Prepraring $testset"
 
         output_dir=$(pwd)/${datadir}/${testset}_test
@@ -116,18 +128,20 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
         rm -r ${output_dir}/tmp_tgt
     done
 
-    if [ ! -z $ood_testset ]; then
+    for testset in $ood_testset; do
+        # Skip if set is empty string
+        [ -z $testset ] && continue
         log "Preparing $ood_testset"
-        output_dir=$(pwd)/${datadir}/${ood_testset}_test
+        output_dir=$(pwd)/${datadir}/${testset}_test
 
         mkdir -p $output_dir
 
-        src_stm=${testset_dir}/ood/sr.${src_lang}-${src_lang}.${ood_testset}.test.stm
+        src_stm=${testset_dir}/ood/sr.${src_lang}-${src_lang}.${testset}.test.stm
 
         # First create the source
         python local/convert_stm_to_espnet.py $src_stm $output_dir $opts
 
-        tgt_stm=${testset_dir}/ood/st.${src_lang}-eng.${ood_testset}.test.stm
+        tgt_stm=${testset_dir}/ood/st.${src_lang}-eng.${testset}.test.stm
         # Create the target within the source
         python local/convert_stm_to_espnet.py $tgt_stm $output_dir/tmp_tgt $opts
 
@@ -138,7 +152,7 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
         cp $output_dir/text $output_dir/text.tc.${src_lang}
 
         rm -r ${output_dir}/tmp_tgt
-    fi
+    done
 fi
 
 #if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
