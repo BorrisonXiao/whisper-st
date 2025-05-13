@@ -57,7 +57,8 @@ no_glm=true
 
 . utils/parse_options.sh
 
-. ./path_hf.sh
+ln -sfv ./path_hf.sh ./path.sh
+. ./path.sh
 . ./cmd.sh
 
 # Parse the _modeldir to get the train_set and peft_method

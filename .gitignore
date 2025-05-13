@@ -15,3 +15,8 @@ dump_*
 *_data_base
 exp_*
 ft_*
+seamless_decode
+hf_data_*
+evaluation/analysis*
+nllb_data_covost2
+nllb_exp_covost2

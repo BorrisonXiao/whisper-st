@@ -21,6 +21,9 @@ LANGS = {
     "spa": "spa_Latn",
     "rus": "rus_Cyrl",
     "eng": "eng_Latn",
+    "fr": "fra_Latn",
+    "de": "deu_Latn",
+    "en": "eng_Latn",
 }
 
 def parse_config(config):

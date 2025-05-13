@@ -9,29 +9,19 @@ set -u
 set -o pipefail
 
 # Change the following according to your experiments
-# src_lang=kor
-# src_lang=ara
-# src_lang=cmn
-src_lang=spa
-# src_lang=rus
-# src_lang=all
-tgt_lang=eng
+src_lang=fr
+tgt_lang=en
 
-# Use the dialectal prefix
-# dialect=tus
-dialect=
-
-train_set=train-cts
-# train_set=train-all
-train_dev=dev1
-extra_dev=dev2
+train_set=train
+train_dev=validation
+extra_dev=validation
 
 debug=false
 # debug=true
 
 ds_config=conf/tuning/ds2.json # The deepspeed configuration file
 peft_method=none               # none, lora, qlora
-master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
+master_port=29506              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=4                 # Number of jobs for decoding, note that each job will use a GPU
 skip_training=false            # Whether to skip training
 load_model_from_path=          # The path to load the model from
@@ -65,38 +55,30 @@ if [ -n "${resume_from_checkpoint}" ]; then
     opts+=" --resume_from_checkpoint ${resume_from_checkpoint} "
 fi
 opts+=" --debug ${debug} "
-opts+=" --merged_data_base /home/hltcoe/cxiao/scale23/whisper/recipe/st/gaussian_data_base "
-opts+=" --merged_data_dir /exp/cxiao/scale23/_gaussian_hf_data "
 
 declare -A testset_dict
 
 testset_dict+=(
-    ["ara"]="iwslt22_test"
-    ["cmn"]="bbn_cts_bolt_test"
-    ["kor"]="uhura_test"
-    ["rus"]="uhura_test"
-    ["spa"]="fisher_test"
-    ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test")
+    ["fr"]="test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
 
-hf_datadir=/exp/cxiao/scale23/hf_data
+hf_datadir=/exp/cxiao/scale23/nllb_data_covost2/${src_lang}
 datadir=data/${src_lang}
-dumpdir=dump/${src_lang}
+dumpdir=dump_covost2/${src_lang}
 
 if ! "${skip_training}"; then
-    ./nllb.sh \
-        --ngpu 8 \
-        --expdir exp_nllb \
-        --nj 80 \
+    ./nllb_covost2.sh \
+        --ngpu 4 \
+        --expdir exp_nllb_covost2 \
         --mt_config ${mt_config} \
         --src_lang ${src_lang} \
         --tgt_lang ${tgt_lang} \
         --train_set "${train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 7 \
-        --stop_stage 8 \
+        --stage 3 \
+        --stop_stage 3 \
         --datadir "${datadir}" \
         --dumpdir "${dumpdir}" \
         --model_name ${model} \

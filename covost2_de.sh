@@ -12,7 +12,7 @@ set -o pipefail
 # Note that this version uses masked GT prompt at training time
 
 # Change the following according to your experiments
-src_lang=fr
+src_lang=de
 tgt_lang=eng
 
 train_set=train
@@ -28,7 +28,7 @@ merge_utt=true                 # Whether to merge utterances for training. This 
 peft_method=lora               # none, lora, qlora
 prompted_mtl=true              # Whether to use the prompted multi-task learning
 normalize_text=false           # Whether or not to normalize the text at training time
-master_port=29501              # Master port for distributed training (to avoid conflict on the same node)
+master_port=29502              # Master port for distributed training (to avoid conflict on the same node)
 inference_nj=4                 # Number of jobs for decoding, note that each job will use a GPU
 use_gpu_inference=true         # Whether to use GPU for inference
 skip_data_prep=true            # Whether to skip data preparation
@@ -42,7 +42,7 @@ min_alpha=0.4                  # The minimum alpha for the multi-task losses, i.
 max_alpha=0.5                  # The maximum alpha for the multi-task losses, i.e. the weight for the ST loss (0.0 means disable ST loss)
 dynamic_loss_start_step=1      # The step to start the dynamic loss weight
 dynamic_loss_k=0.25            # The k for the dynamic loss weight (the log base)
-use_asr_prompt_decode=true     # Whether to use the ASR hypothesis at inference time
+use_asr_prompt_decode=false    # Whether to use the ASR hypothesis at inference time
 promptless_decode=false        # Whether to perform promptless decoding at inference time
 disable_asr_inference=false    # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
 use_asr_prompt_dev=false       # Whether to use ASR prompt at dev time
@@ -130,6 +130,7 @@ testset_dict+=(
     ["rus"]="uhura_test"
     ["spa"]="fisher_test"
     ["fr"]="test"
+    ["de"]="test"
     ["all"]="iwslt22_test bbn_cts_bolt_test uhura_test fisher_test callhome_test")
 
 test_set=${testset_dict[${src_lang}]} # This option is to run eval
@@ -146,6 +147,7 @@ dumpdir=dump_covost2/${src_lang}
 if ! "${skip_data_prep}"; then
     local/prep_covost2.py \
         --data-dir ${dumpdir}/raw \
+        --lang ${src_lang} \
         --save-dir ${hf_datadir}
 
     # # Run Whisper inference on the validation data to create the ASR-prompted validation2 data
@@ -166,7 +168,7 @@ if ! "${skip_data_prep}"; then
     # # shellcheck disable=SC2086
     # utils/split_scp.pl "${key_file}" ${split_scps}
 
-    # opts=" --dset ${hf_datadir}/validation "
+    # opts=" --dset ${hf_datadir}/${src_lang}.validation "
     # inference_tool="pyscripts/utils/hf_whisper_inference.py"
 
     # ln -sfv ./path_hf.sh ./path.sh
@@ -205,8 +207,8 @@ if ! "${skip_data_prep}"; then
 
     # # Create the validate2 data
     # pyscripts/utils/create_synth_data.py \
-    #     --src-dset ${hf_datadir}/validation \
-    #     --tgt-dset ${hf_datadir}/validation2 \
+    #     --src-dset ${hf_datadir}/${src_lang}.validation \
+    #     --tgt-dset ${hf_datadir}/${src_lang}.validation2 \
     #     --asr-hyp ${output_dir}/text
 fi
 

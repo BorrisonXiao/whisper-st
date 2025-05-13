@@ -27,6 +27,7 @@ from transformers.trainer_whisper import _schedule_dynamic_mtl_weight
 from transformers.models.whisper_st.processing_whisper import WhisperProcessor
 from transformers.models.whisper_st.modeling_whisper import WhisperForConditionalGeneration
 import os
+from tqdm import tqdm
 
 # Fix the random seed for reproducibility
 torch.manual_seed(1024)
@@ -38,6 +39,8 @@ LANGS = {
     "cmn": "chinese",
     "spa": "spanish",
     "rus": "russian",
+    "fr": "french",
+    "de": "german",
 }
 DIALECT = {
     "tus": {"src_lang": "ara", "dialect": "tunisian"},
@@ -159,6 +162,7 @@ def prepare_dataset(
         train=True,
         multilingual=False,
         _processor=None,
+        speed_perturb_factors=None,
 ):
     processed_dset_list = []
     processed_dset_dict = {}
@@ -199,7 +203,9 @@ def prepare_dataset(
                 if mode not in ["mt", "umt"]:
                     if not on_the_fly_feat_extraction:
                         batch["input_features"] = processor.feature_extractor(
-                            audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+                            audio["array"],
+                            sampling_rate=audio["sampling_rate"],
+                        ).input_features[0]
 
                 if mode in ["pmtl", "mt", "umt"]:
                     scp = std_basic(batch["transcript"]).strip(
@@ -234,6 +240,47 @@ def prepare_dataset(
             col_names = dset.column_names if not on_the_fly_feat_extraction else [
                 col for col in dset.column_names if col != "audio"]
             print(f"num_proc: {min(preprocessing_num_proc, os.cpu_count())}")
+            
+            if mode not in ["mt", "umt"]:
+                # Validate the dataset
+                valid_indices = set()
+                for i in tqdm(range(len(dset))):
+                    try:
+                        dset[i]["audio"]
+                        valid_indices.add(i)
+                    except Exception as e:
+                        print(f"Invalid audio file {i}: {e}")
+            
+                dset = dset.select(list(valid_indices))
+            
+                # Apply speed perturbation if specified
+                if speed_perturb_factors is not None and "train" in dset_type:
+                    import librosa
+
+                    perturbed_sets = []
+                    for factor in speed_perturb_factors.split():
+                        print(f"Speed perturbation factor: {factor}")
+                        if factor == "1.0":
+                            perturbed_sets.append(dset)
+                        else:
+                            def perturb_speed(batch):
+                                if "audio" in batch:
+                                    audio = batch["audio"]
+                                    original_sr = audio["sampling_rate"]
+                                    new_sr = int(original_sr * float(factor))
+                                    audio["array"] = librosa.resample(
+                                        audio["array"], orig_sr=original_sr, target_sr=new_sr
+                                    )
+                                    audio["sampling_rate"] = new_sr
+                                    batch["audio"] = audio
+                                return batch
+                            perturbed_dset = dset.map(
+                                perturb_speed,
+                                num_proc=min(preprocessing_num_proc, os.cpu_count()),
+                                desc=f"Speed perturbation {factor}")
+                        perturbed_sets.append(perturbed_dset)
+                    dset = concatenate_datasets(perturbed_sets)
+                    
             processed_dset = dset.map(_prepare_dataset,
                                       num_proc=min(
                                           preprocessing_num_proc, os.cpu_count()),
@@ -289,7 +336,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
             (self.processor.feature_extractor.feature_size, self.processor.feature_extractor.nb_max_frames)).numpy()} for feature in features]
         for i, feature in enumerate(features):
             if "input_features" not in feature or feature["input_features"] is None:
-                if "audio" in feature:
+                if "audio" in feature and feature["audio"] is not None:
                     # Perform feature extraction on the fly
                     input_features[i] = {"input_features": self.processor.feature_extractor(
                         feature["audio"]["array"], sampling_rate=feature["audio"]["sampling_rate"]).input_features[0]}
@@ -298,14 +345,7 @@ class DataCollatorSpeechSeq2SeqWithPadding:
                     "input_features": feature["input_features"]}
 
         # Convert to tensors
-        # input_features[0] = {"input_features": self.processor.feature_extractor(torch.Tensor()).input_features[0]}
-        batch = self.processor.feature_extractor.pad(
-            input_features, return_tensors="pt")
-        # if input_features[0]["input_features"] is not None:
-        #     batch = self.processor.feature_extractor.pad(
-        #         input_features, return_tensors="pt")
-        # else:
-        #     batch = {"input_features": torch.zeros(len(input_features), 1, 1)}
+        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
 
         asr_ref_prompt = False
         if "labels_src" in features[0]:
@@ -450,6 +490,7 @@ def feat_extraction(
     on_the_fly_feat_extraction=False,
     dev_name="dev",
     train=True,
+    speed_perturb_factors=None,
 ):
     # Step 1: Load the sets
     train_dset_dict, val_dset_dict = load_train_and_dev_sets(
@@ -469,6 +510,7 @@ def feat_extraction(
         on_the_fly_feat_extraction=on_the_fly_feat_extraction,
         train=train,
         multilingual=multilingual,
+        speed_perturb_factors=speed_perturb_factors,
     )
     _train_dset = prepare_dataset(
         dset_dict=train_dset_dict,
@@ -481,6 +523,7 @@ def feat_extraction(
         on_the_fly_feat_extraction=on_the_fly_feat_extraction,
         train=train,
         multilingual=multilingual,
+        speed_perturb_factors=speed_perturb_factors,
     )
 
     return _train_dset, _val_dset
@@ -517,6 +560,7 @@ def finetune(
     max_alpha=0.5,
     loss_warmup='auto',
     loss_base=0.25,
+    speed_perturb_factors=None,
 ):
     # Step 1: Load prepare the training/dev sets
     _train_dset, _val_dset = feat_extraction(
@@ -533,6 +577,7 @@ def finetune(
         on_the_fly_feat_extraction=on_the_fly_feat_extraction,
         dev_name=dev_name,
         train=True,
+        speed_perturb_factors=speed_perturb_factors,
     )
 
     # Step 4: Define the data collator
@@ -567,6 +612,8 @@ def finetune(
         pred_ids = pred.predictions
         label_ids = pred.label_ids
 
+        prefixes = processor.tokenizer.batch_decode(
+            pred_ids[:, :], skip_special_tokens=False)
         # compute loss only on tokens after the first <|startoftranscript|> token
         sot_token_id = processor.tokenizer.convert_tokens_to_ids(
             "<|startoftranscript|>")
@@ -583,8 +630,6 @@ def finetune(
         pred_str = processor.tokenizer.batch_decode(
             pred_ids, skip_special_tokens=True)
         # decode only the first 4 special tokens
-        prefixes = processor.tokenizer.batch_decode(
-            pred_ids[:, :4], skip_special_tokens=False)
         label_str = processor.tokenizer.batch_decode(
             label_ids, skip_special_tokens=True)
 
@@ -614,7 +659,7 @@ def finetune(
                         for i in range(len(pred_str)) if len(label_str[i]) > 0]
             label_str = [label_str[i]
                          for i in range(len(label_str)) if len(label_str[i]) > 0]
-
+            
         if save_eval_preds is not None:
             Path(save_eval_preds).parent.mkdir(parents=True, exist_ok=True)
             with open(save_eval_preds, "a") as f:
@@ -623,6 +668,16 @@ def finetune(
                     f.write(f"Pred: {pred}\n")
                     f.write(f"Prefix: {prefixes[i]}\n\n")
                 print("--------------------------------------------------", file=f)
+                
+        # There's occasionally empty strings in the label_str, thus we exclude them at evaluation
+        _pred_str = []
+        _label_str = []
+        for i in range(len(label_str)):
+            if len(label_str[i]) > 0:
+                _pred_str.append(pred_str[i])
+                _label_str.append(label_str[i])
+        pred_str = _pred_str
+        label_str = _label_str
 
         if src_lang == tgt_lang:
             # Use CER for ASR training
@@ -689,6 +744,7 @@ def finetune(
             quantization_config=quantization_config,
         )
         
+    # TODO (Cihan): Disable re-initialization if the model is loaded from a checkpoint
     # We re-initialize the mask token's decoder embedding to be the same as the <|startofprev|> token with a little noise
     mask_token_id = processor.tokenizer.convert_tokens_to_ids(
         processor.tokenizer.mask_token)
@@ -700,7 +756,8 @@ def finetune(
 
     if dialect is not None:
         model.resize_token_embeddings(len(processor.tokenizer))
-        # Save the model with the new embeddings
+    # Save the base model
+    print(f"Saving the base model to {output_dir / 'base_model'}")
     model.save_pretrained(output_dir / "base_model")
 
     if peft_method:
@@ -721,6 +778,7 @@ def finetune(
             # if dialect is not None:
             if True:
                 # Modify the peft config so that it points to the new base model
+                print(f"Updating the base model path to {output_dir / 'base_model'}")
                 model.peft_config['default'].base_model_name_or_path = str(
                     output_dir.absolute() / "base_model")
             model.print_trainable_parameters()
@@ -856,8 +914,7 @@ def main():
                         choices=["lora", "qlora", None],
                         help="Which PEFT method to use")
     parser.add_argument("--dev-name", type=str, default="dev",
-                        choices=["dev", "dev1", "dev2"],
-                        help="Name of the dev set, e.g. dev, dev1, dev2")
+                        help="Name of the dev set, e.g. dev, dev1, dev2, dev3")
     parser.add_argument("--feat-extraction", action="store_true",
                         help="If true, only perform feature extraction")
     parser.add_argument("--deepspeed", type=Path, default=None,
@@ -890,6 +947,8 @@ def main():
                         help="Number of steps to warm up the loss weight for the PMTL training.")
     parser.add_argument("--loss-base", type=float, default=.25,
                         help="Base for the log-increase ST weight, larger means slower increases.")
+    parser.add_argument("--speed-perturb-factors", type=str, default=None,
+                        help="Comma-separated list of speed perturbation factors to use for data augmentation, e.g. '0.9,1.0,1.1'")
 
     args = parser.parse_args()
     logging.basicConfig(level=args.log_level)
@@ -908,6 +967,7 @@ def main():
             normalize_text=args.normalize_text,
             on_the_fly_feat_extraction=args.on_the_fly_feat_extraction,
             dev_name=args.dev_name,
+            speed_perturb_factors=args.speed_perturb_factors,
             train=False,
         )
     else:
@@ -942,6 +1002,7 @@ def main():
             min_alpha=args.min_alpha,
             loss_warmup=args.loss_warmup,
             loss_base=args.loss_base,
+            speed_perturb_factors=args.speed_perturb_factors,
         )
 
 

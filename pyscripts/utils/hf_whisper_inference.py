@@ -25,6 +25,7 @@ LANGS = {
     "tus": "tunisian",
     "eng": "english",
     "fr": "french",
+    "de": "german",
 }
 
 
@@ -85,6 +86,7 @@ def inference(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / "text"
+    
     with open(output, "w") as f:
         total_len = len(ds) if keyfile is None else len(keys)
         pbar = tqdm(range(total_len))
@@ -106,7 +108,7 @@ def inference(
                 input_speech, sampling_rate=samping_rate, return_tensors="pt").input_features.to(device)
             # Generate token ids
             predicted_ids = model.generate(
-                input_features, forced_decoder_ids=forced_decoder_ids, num_beams=num_beams)
+                input_features, forced_decoder_ids=forced_decoder_ids, num_beams=num_beams, max_length=128)
             # Decode token ids to text
             hyps = processor.batch_decode(
                 predicted_ids, skip_special_tokens=True)

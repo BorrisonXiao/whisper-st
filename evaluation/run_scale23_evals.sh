@@ -35,6 +35,7 @@ sclite=sclite
 comet=none
 comet_model=/exp/mmartindale/scale23/shared/comet_models/comet/checkpoints/model.ckpt
 cer=false
+no_glm=false
 
 help_message=$(cat << EOF
 Usage: $0 --score_dir <path_to_dir> --ref_mt <path_to_ref_file> --hyp_mt <path_to_hyp_file>
@@ -84,6 +85,11 @@ if ([ "$ref_mt" == "" ] && [ "$hyp_mt" != "" ]) || ([ "$ref_mt" != "" ] && [ "$h
     echo "WARNING: --ref_mt and --hyp_mt must both be set for translation eval to run"
 fi
 
+res_file=${score_dir}/result.lc.rm.txt
+if "${no_glm}"; then
+    res_file=${score_dir}/result.noglm.lc.rm.txt
+fi
+
 # Check comet settings
 if [ "$comet" != "none" ]; then
     if [[ "$comet" == "seg"* ]]; then
@@ -127,6 +133,10 @@ if [ -f ${score_dir}/result.lc.txt ]; then
     rm ${score_dir}/result.lc.txt
 fi
 
+if [ -f ${score_dir}/result.noglm.lc.rm.txt ]; then
+    rm ${score_dir}/result.noglm.lc.rm.txt
+fi
+
 if [ "$comet" != "none" ] && [ -f $comet_out ]; then
     rm $comet_out
 fi
@@ -149,6 +159,10 @@ for input_file in $ref_mt $hyp_mt $ref_asr $hyp_asr; do
             file_copy=hyp_asr.stm
             glm_lang=${src_lang};;
     esac
+    if "$no_glm"; then
+        echo "No GLM rules applied"
+        glm_lang=dummy
+    fi
 
     echo "Copying ..." #$input_file into $score_dir/$file_copy"
     cp $input_file $score_dir/$file_copy
@@ -156,20 +170,23 @@ for input_file in $ref_mt $hyp_mt $ref_asr $hyp_asr; do
     echo "Normalize STM times ... " #$score_dir/$file_copy"
     $python $pyscripts/utils/normalize_stm_times.py $score_dir/$file_copy $score_dir/${file_copy}.norm 2> ${score_dir}/normalize.err.log
 
-    echo "Applying GLM rules ..." #to $score_dir/$file_copy"
+    # Print only if no_glm is set to false
+    if ! "$no_glm"; then
+        echo "Normalizing STM ..." #$score_dir/$file_copy.norm"
+    fi
     $python $pyscripts/utils/apply_glm_rules.py $score_dir/$file_copy.norm $utils/glm.${glm_lang} stm $score_dir/${file_copy}.glm 2> ${score_dir}/glm.err.log
 done
 
 # Check if ${run_asr}. Run ASR eval here.
 if [ ${run_asr} == true ]; then
     echo "Running ASR score"
-    echo "ASR results" > ${score_dir}/result.lc.rm.txt
+    echo "ASR results" > ${res_file}
     _opts=
     if "${cer}"; then
         _opts+=" --cer "
     fi
-    $python $pyscripts/utils/stm_wer.py $sclite $score_dir/ref_asr.stm.glm $score_dir/hyp_asr.stm.glm $score_dir $arabic_norm ${_opts} >> ${score_dir}/result.lc.rm.txt
-    echo "" >> ${score_dir}/result.lc.rm.txt
+    $python $pyscripts/utils/stm_wer.py $sclite $score_dir/ref_asr.stm.glm $score_dir/hyp_asr.stm.glm $score_dir $arabic_norm ${_opts} >> ${res_file}
+    echo "" >> ${res_file}
 fi
 
 # Check if ${run_mt}. Run MT eval here.
@@ -238,20 +255,34 @@ if [ ${run_mt} == true ]; then
     fi
 
     # Run sacrebleu
-    echo "Case insensitive BLEU result (single-reference)" >> ${score_dir}/result.lc.rm.txt
+    echo "Case insensitive BLEU result (single-reference)" >> ${res_file}
     sacrebleu -lc "${score_dir}/ref.tc.rm" \
             -i "${score_dir}/hyp.tc.rm" \
             -m bleu chrf ter \
             -b -w 4 \
-            >> ${score_dir}/result.lc.rm.txt
+            >> ${res_file}
 
-    echo "" >> ${score_dir}/result.lc.rm.txt
+    # Debug: using sentence-level bleu
+    sacrebleu -lc "${score_dir}/ref.tc.rm" \
+            -i "${score_dir}/hyp.tc.rm" \
+            -m bleu \
+            -b -w 4 \
+            --sentence-level \
+            >> ${score_dir}/result.sent.lc.rm.txt
+    
+    pyscripts/utils/analyze_result_file.py \
+        --ref ${score_dir}/ref.tc.rm \
+        --hyp ${score_dir}/hyp.tc.rm \
+        --scores ${score_dir}/result.sent.lc.rm.txt \
+        --output ${score_dir}/analysis.lc.rm.csv
+
+    echo "" >> ${res_file}
 
     #echo "Score summary"
     #${python} $pyscripts/utils/process_result_file.py --score-only ${score_dir}/result.lc.rm.txt
 fi
 
-cat ${score_dir}/result.lc.rm.txt
+cat ${res_file}
 if [ "$comet" != "none" ]; then
 	tail -n 1 $comet_out
 fi

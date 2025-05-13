@@ -711,6 +711,7 @@ MMHM    =>  UHHUH     / [ ] __ [ ]
 MM-HM   =>  UHHUH     / [ ] __ [ ]
 MM-HUH  =>  UHHUH     / [ ] __ [ ]
 HUH-UH  =>  UHUH      / [ ] __ [ ]
+AHA     =>  UHHUH     / [ ] __ [ ]
 ;;
 ;;
 UH      =>  %HESITATION     / [ ] __ [ ]
@@ -727,6 +728,8 @@ HEE     =>  %HESITATION     / [ ] __ [ ]
 ACH     =>  %HESITATION     / [ ] __ [ ]
 EEE     =>  %HESITATION     / [ ] __ [ ]
 EW      =>  %HESITATION     / [ ] __ [ ]
+HMM     =>  %HESITATION     / [ ] __ [ ]
+EHM     =>  %HESITATION     / [ ] __ [ ]
 ;;
 %UH      =>  %HESITATION     / [ ] __ [ ]
 %UM      =>  %HESITATION     / [ ] __ [ ]
@@ -742,6 +745,8 @@ EW      =>  %HESITATION     / [ ] __ [ ]
 %ACH     =>  %HESITATION     / [ ] __ [ ]
 %EEE     =>  %HESITATION     / [ ] __ [ ]
 %EW      =>  %HESITATION     / [ ] __ [ ]
+%HMM     =>  %HESITATION     / [ ] __ [ ]
+%EHM     =>  %HESITATION     / [ ] __ [ ]
 
 ;; INPUT_DEPENDENT_APPLICATION = "ctm"
 ;; File contractions.rls Version 3 dated 12/13/96
@@ -1728,3 +1733,4 @@ EW      =>  %HESITATION     / [ ] __ [ ]
 [WILLARD'S] => [{WILLARD IS / WILLARD HAS}] / [ ] __ [ ]
 [WOMEN'S] => [{WOMEN IS / WOMEN HAS}] / [ ] __ [ ]
 [ZAIRE'S] => [{ZAIRE IS / ZAIRE HAS}] / [ ] __ [ ]
+[OFCOURSE] => [{OF COURSE}] / [ ] __ [ ]

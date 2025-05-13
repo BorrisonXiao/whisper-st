@@ -44,11 +44,11 @@ master_port=29501              # Master port for distributed training (to avoid 
 inference_nj=8                 # Number of jobs for decoding, note that each job will use a GPU
 use_gpu_inference=true         # Whether to use GPU for inference
 merge_decode=false             # Whether to merge the utterances at decoding time
-skip_data_prep=false            # Whether to skip data preparation
-skip_training=true            # Whether to skip training
+skip_data_prep=true            # Whether to skip data preparation
+skip_training=false            # Whether to skip training
 use_asr_prompt=true            # Whether to mask the ASR hypothesis at BMTL training time
-min_promptless_prob=0.2        # The minimum probability for performing promptless ST finetuning
-max_promptless_prob=0.2        # The maximum probability for perforFming promptless ST finetuning
+min_promptless_prob=0.15        # The minimum probability for performing promptless ST finetuning
+max_promptless_prob=0.15        # The maximum probability for perforFming promptless ST finetuning
 batch_mask_prob=0.8            # The probability for applying masks to the prompt
 token_mask_prob=0.4            # The probability for masking tokens in the prompt
 min_alpha=0.4                  # The minimum alpha for the multi-task losses, i.e. the weight for the ST loss
@@ -58,7 +58,7 @@ dynamic_loss_k=0.25            # The k for the dynamic loss weight (the log base
 use_asr_prompt_decode=true     # Whether to use the ASR hypothesis at inference time
 promptless_decode=false        # Whether to perform promptless decoding at inference time
 disable_asr_inference=true     # Whether to disable ASR inference at inference time, note this only works when use_asr_prompt_decode is false
-use_asr_prompt_dev=false       # Whether to use ASR prompt at dev time
+use_asr_prompt_dev=true        # Whether to use ASR prompt at dev time
 load_model_from_path=          # The path to load the model from
 resume_from_checkpoint=        # The path to resume from a checkpoint
 eval_multi_bleu=false          # Whether to evaluate the multi-BLEU score (fisher-spanish only) for the MT task
@@ -178,6 +178,8 @@ if [ -n "$dialect" ]; then
     opts+=' --dialect '
     opts+=$dialect
 fi
+# save_eval_preds=/home/hltcoe/cxiao/st/ft_cts_cts_mask/hf_whisper_large-v2_merged/spa/train-cts_sp/mml/lora_0.8_0.4/logdir/eval_preds
+# rm -f ${save_eval_preds}
 
 if ! "${skip_data_prep}"; then
     # # Prepare the MT data from the OOD training set, note that merging is not applied for MT data
@@ -287,11 +289,12 @@ if ! "${skip_data_prep}"; then
             --dumpdir ${dumpdir} \
             --inference_nj ${inference_nj} \
             --inference_batch_size ${inference_batch_size}
-
-        extra_dev=${extra_dev_synth}
     fi
-
     # TODO (Cihan): This may be a bit confusing, we are using the original dev set for eval but saving it to the merged directory
+fi
+
+if [ -n "${extra_dev_synth}" ]; then
+    extra_dev=${extra_dev_synth}
 fi
 
 if ! "${skip_training}"; then
@@ -309,8 +312,8 @@ if ! "${skip_training}"; then
         --mt_train_set "${mt_train_set}" \
         --valid_set "${train_dev}" \
         --test_sets "${test_set}" \
-        --stage 1 \
-        --stop_stage 1 \
+        --stage 2 \
+        --stop_stage 7 \
         --dumpdir "${dumpdir}" \
         --st_tag whisper_${model} \
         --model_name ${model} \

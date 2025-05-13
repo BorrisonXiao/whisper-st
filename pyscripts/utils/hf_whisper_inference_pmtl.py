@@ -31,6 +31,8 @@ LANGS = {
     "rus": "russian",
     "tus": "tunisian",
     "eng": "english",
+    "fr": "french",
+    "de": "german",
 }
 
 
@@ -68,11 +70,11 @@ def _create_prompted_inputs(
     tokenizer,
     prompts=None,
     device="cpu",
+    startofprev_token="<|startofprev|>",
 ) -> Dict[str, torch.Tensor]:
     inputs_st = {}
     inputs_st['input_features'] = input_features
 
-    startofprev_token = "<|startofprev|>"
     tokenizer = copy.deepcopy(tokenizer.tokenizer)
     # Enforce left padding for generation
     tokenizer.padding_side = "left"
@@ -89,6 +91,7 @@ def _create_prompted_inputs(
     # e.g. decoder_input_ids: <|startofprev|> [asr_ref] <|startoftranscript|> [st_ref]
     # Note that the first <|endoftext|> token should not be ignored, otherwise the model will not
     # learn to terminate the generation.
+    print(startofprev_token)
     prompt_texts = [f"{startofprev_token}{prompt}" for prompt in prompts]
     _labels = tokenizer.batch_encode_plus(
         prompt_texts,
@@ -98,7 +101,8 @@ def _create_prompted_inputs(
     # Otherwise, the decoder_input_ids are _labels
     decoder_input_ids = [{"input_ids": _label} for _label in _labels]
     decoder_input_ids = tokenizer.pad(decoder_input_ids, return_tensors="pt")
-    assert decoder_input_ids["input_ids"].shape[1] <= 120, f"decoder_input_ids['input_ids'].shape[1]: {decoder_input_ids['input_ids'].shape[1]}"
+    assert decoder_input_ids["input_ids"].shape[
+        1] <= 128, f"decoder_input_ids['input_ids'].shape[1]: {decoder_input_ids['input_ids'].shape[1]}"
     # Note that no right padding is applied to the labels since they are set to -100 already in the collator
     decoder_input_ids = decoder_input_ids["input_ids"]
     inputs_st['decoder_input_ids'] = decoder_input_ids
@@ -138,6 +142,7 @@ def inference(
     if peft_model is not None:
         print(f"Loading PEFT model from {peft_model}")
         peft_config = PeftConfig.from_pretrained(peft_model)
+        print(f"Loading base model from {peft_config.base_model_name_or_path}")
         model = WhisperForConditionalGeneration.from_pretrained(
             peft_config.base_model_name_or_path).to(device)
         processor = WhisperProcessor.from_pretrained(peft_model)
@@ -162,7 +167,7 @@ def inference(
     print(f"torch.cuda.is_available(): {torch.cuda.is_available()}")
     print(f"batch_size: {batch_size}")
     print(f"num_beams: {num_beams}")
-    
+
     if use_asr_hyp:
         print("Using ASR hypothesis as the prompt to the ST inference")
 
@@ -181,14 +186,13 @@ def inference(
     # Load the ASR hypothesis file
     asr_hyps = None
     if asr_hyp is not None:
-        print(f"Loading ASR hypothesis from {asr_hyp}, instead of the model's ASR outputs")
+        print(
+            f"Loading ASR hypothesis from {asr_hyp}, instead of the model's ASR outputs")
         with open(asr_hyp, "r") as f:
             lines = f.readlines()
         asr_hyps = [line.strip().split(maxsplit=1) for line in lines]
         asr_hyps = {uttid: hyp for uttid, hyp in asr_hyps}
 
-    startofprev_id = processor.tokenizer.convert_tokens_to_ids(
-        "<|startofprev|>")
     startoftranscript_id = processor.tokenizer.convert_tokens_to_ids(
         "<|startoftranscript|>")
 
@@ -197,7 +201,8 @@ def inference(
     output_st = output_dir / "st"
     do_asr = use_asr_hyp or not disable_asr
     if asr_hyp is not None:
-        print(f"Skipping ASR inference as the ASR hypothesis is provided at {asr_hyp}...")
+        print(
+            f"Skipping ASR inference as the ASR hypothesis is provided at {asr_hyp}...")
         do_asr = False
     total_len = len(ds) if keyfile is None else len(keys)
     if not do_asr:
@@ -232,22 +237,23 @@ def inference(
                 hyps = processor.batch_decode(
                     predicted_ids, skip_special_tokens=True)
 
-                all_hyps.update({uttid: hyp for uttid, hyp in zip(uttids, hyps)})
+                all_hyps.update(
+                    {uttid: hyp for uttid, hyp in zip(uttids, hyps)})
 
                 for i, hyp in enumerate(hyps):
                     print(uttids[i], hyp.strip(), file=f)
-                
+
                 f.flush()
                 pbar.update(len(batch))
-                
+
                 # Reset the batch
                 batch = []
                 uttids = []
-                
-        if asr_hyps is None:
+
+        if asr_hyps is None and not mt:
             print("Using on-the-fly ASR hypothesis as the prompt to the ST inference")
             asr_hyps = all_hyps
-            
+
     with open(output_st, "w") as f_st:
         # Do the conditioned ST inference
         pbar = tqdm(range(total_len))
@@ -257,7 +263,7 @@ def inference(
             uttid = utt["uttid"]
             if keyfile is not None and uttid not in keys:
                 continue
-            if asr_hyps is not None:
+            if asr_hyps is not None and not mt:
                 # Replace the transcript with the ASR hypothesis
                 utt["transcript"] = asr_hyps[uttid]
             uttids.append(uttid)
@@ -329,9 +335,14 @@ def inference(
 
             model.generation_config.decoder_start_token_id = decoder_start_token_ids
             inputs_st = _create_prompted_inputs(
-                input_features=input_features, tokenizer=processor, prompts=transcripts, device=device).to(device=device)
+                input_features=input_features,
+                tokenizer=processor,
+                prompts=transcripts,
+                device=device,
+                startofprev_token="<|startofprev|>" if not use_asr_hyp else "<|startoflm|>",
+            ).to(device=device)
             raw_st_predicted_ids = model.generate(
-                **inputs_st, max_length=256, num_beams=1) # Currently only supports greedy decoding
+                **inputs_st, max_length=256, num_beams=1)  # Currently only supports greedy decoding
             # Need to mask everything before the first <|startoftranscript|> token with the special token
             st_predicted_ids = copy.deepcopy(raw_st_predicted_ids)
             for i, st_predicted_id in enumerate(raw_st_predicted_ids):

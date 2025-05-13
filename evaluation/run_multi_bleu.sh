@@ -32,7 +32,7 @@ hyp_mt=
 python=python3
 comet=none
 comet_model=/exp/mmartindale/scale23/shared/comet_models/comet/checkpoints/model.ckpt
-no_glm=false
+no_glm=true
 
 help_message=$(
     cat <<EOF
@@ -230,7 +230,7 @@ fi
 
 # Run multi-bleu
 echo "Writing results to ${res_file}"
-echo "Case insensitive multi-BLEU result (single-reference)" >>${res_file}
+echo "Case insensitive multi-BLEU result (multi-reference)" >>${res_file}
 ./scripts/multi-bleu.pl -lc ${score_dir}/ref.tc.*.rm <${score_dir}/hyp.tc.rm >>${res_file}
 
 cat ${res_file}
